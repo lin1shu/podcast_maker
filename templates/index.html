@@ -30,7 +30,7 @@
                                     <label for="voice" class="form-label">Voice</label>
                                     <select class="form-select" id="voice" name="voice">
                                         {% for voice in voices %}
-                                        <option value="{{ voice }}">{{ voice|capitalize }}</option>
+                                        <option value="{{ voice }}" {% if voice == "nova" %}selected{% endif %}>{{ voice|capitalize }}</option>
                                         {% endfor %}
                                     </select>
                                 </div>
@@ -38,7 +38,7 @@
                                     <label for="tone" class="form-label">Tone</label>
                                     <select class="form-select" id="tone" name="tone">
                                         {% for tone in tones %}
-                                        <option value="{{ tone }}">{{ tone|capitalize }}</option>
+                                        <option value="{{ tone }}" {% if tone == "friendly" %}selected{% endif %}>{{ tone|capitalize }}</option>
                                         {% endfor %}
                                     </select>
                                     <small class="form-text text-muted mt-1">Select a tone to customize how the text is spoken.</small>
@@ -96,30 +96,13 @@
                             <p id="progressText" class="text-center mb-0">Processing chunks: <span id="currentChunkDisplay">0</span>/<span id="totalChunkDisplay">0</span></p>
                         </div>
                         
-                        <!-- Text Content Display -->
-                        <div id="textContentDisplay" class="mt-4">
-                            <div class="card mb-3">
-                                <div class="card-header">
-                                    <h5 class="mb-0">Current Text Chunk</h5>
-                                </div>
-                                <div class="card-body">
-                                    <div id="originalTextContainer">
-                                        <h6>Original Text:</h6>
-                                        <div id="originalText" class="p-3 border rounded mb-3"></div>
-                                    </div>
-                                    <div id="translatedTextContainer" style="display: none;">
-                                        <h6>Chinese Translation:</h6>
-                                        <div id="translatedText" class="p-3 border rounded bg-light"></div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
                         <!-- Next/Previous Buttons -->
                         <div id="navigationButtons" class="d-flex justify-content-between mt-3" style="display: none !important;">
                             <button id="prevChunkBtn" class="btn btn-secondary" disabled>Previous Chunk</button>
-                            <button id="nextChunkBtn" class="btn btn-primary">Next Chunk</button>
+                            <button id="navNextChunkBtn" class="btn btn-primary">Next Chunk</button>
                         </div>
+
+                        <!-- Simple Chunking is removed -->
                     </div>
                 </div>
 

@@ -10,6 +10,18 @@ document.addEventListener('DOMContentLoaded', function() {
     const convertChineseBtn = document.getElementById('convertChineseBtn');
     const showChunksBtn = document.getElementById('showChunksBtn');
     
+    // Initialize the originalText element with a starting message
+    const originalText = document.getElementById('originalText');
+    if (originalText) {
+        originalText.textContent = 'Enter text and click "Show Chunks" to display text chunks here.';
+        console.log('Initialized originalText element');
+    } else {
+        console.log('originalText element not found - this is expected after UI update');
+    }
+    
+    // Initialize the resultCard display
+    resultCard.style.display = 'block';
+    
     // Create translation display div
     const translationDiv = document.createElement('div');
     translationDiv.id = 'translationResult';
@@ -23,13 +35,6 @@ document.addEventListener('DOMContentLoaded', function() {
     chunkInfoDiv.className = 'alert alert-secondary mt-3';
     chunkInfoDiv.style.display = 'none';
     resultCard.appendChild(chunkInfoDiv);
-    
-    // Create chunk text display div
-    const chunkTextDiv = document.createElement('div');
-    chunkTextDiv.id = 'chunkText';
-    chunkTextDiv.className = 'card mt-3';
-    chunkTextDiv.style.display = 'none';
-    resultCard.appendChild(chunkTextDiv);
     
     // Create a simple text chunk display area
     const simpleChunkDiv = document.createElement('div');
@@ -52,43 +57,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const simpleChunkCounter = document.getElementById('simpleChunkCounter');
     const chunkContent = document.getElementById('chunkContent');
     const nextChunkBtn = document.getElementById('nextChunkBtn');
-    
-    // Setup chunk cards layout
-    chunkTextDiv.innerHTML = `
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">Text Segments</h5>
-            <span id="chunkCounter" class="badge bg-primary">0/0</span>
-        </div>
-        <div class="card-body">
-            <div class="current-segment">
-                <h6 class="mb-2">Current Segment</h6>
-                <div id="currentOriginalText" class="p-2 border rounded mb-2"></div>
-                <div id="currentTranslatedContainer" class="mb-3" style="display: none;">
-                    <h6>Chinese Translation:</h6>
-                    <div id="currentTranslatedText" class="p-2 bg-light border rounded"></div>
-                </div>
-            </div>
-            <hr class="my-3">
-            <div class="next-segment" style="display: none;">
-                <h6 class="mb-2">Next Segment (Preparing...)</h6>
-                <div id="nextOriginalText" class="p-2 border rounded mb-2"></div>
-                <div id="nextTranslatedContainer" class="mb-3" style="display: none;">
-                    <h6>Chinese Translation:</h6>
-                    <div id="nextTranslatedText" class="p-2 bg-light border rounded"></div>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    // Get the new elements
-    const chunkCounter = document.getElementById('chunkCounter');
-    const currentOriginalText = document.getElementById('currentOriginalText');
-    const currentTranslatedContainer = document.getElementById('currentTranslatedContainer');
-    const currentTranslatedText = document.getElementById('currentTranslatedText');
-    const nextSegmentDiv = document.querySelector('.next-segment');
-    const nextOriginalText = document.getElementById('nextOriginalText');
-    const nextTranslatedContainer = document.getElementById('nextTranslatedContainer');
-    const nextTranslatedText = document.getElementById('nextTranslatedText');
     
     // Create progress bar for chunk processing
     const chunkProgressDiv = document.createElement('div');
@@ -211,143 +179,61 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    // Handle form submission for regular speech
+    // Set up event listeners for main buttons
     form.addEventListener('submit', function(e) {
         e.preventDefault();
         processText(false);
     });
     
-    // Handle Chinese translation and speech
-    convertChineseBtn.addEventListener('click', function(e) {
-        e.preventDefault();
-        processText(true);
-    });
-    
-    // Handle text chunks display
-    showChunksBtn.addEventListener('click', function(e) {
-        e.preventDefault();
-        processTextChunks();
-    });
-    
-    // Handle next chunk button
-    nextChunkBtn.addEventListener('click', function() {
-        getNextTextChunk();
-    });
-    
-    // Function to process text chunks
-    function processTextChunks() {
-        // Reset UI state
-        resetUI();
-        
-        // Update and show loading indicator
-        loadingMessage.textContent = 'Processing text into chunks...';
-        loadingAlert.style.display = 'block';
-        
-        // Check if there's text to convert
-        const text = document.getElementById('text').value.trim();
-        if (!text) {
-            showError('Please enter some text to process.');
-            return;
-        }
-        
-        // Create form data
-        const formData = new FormData();
-        formData.append('text', text);
-        
-        // Send API request
-        fetch('/chunk_text_only', {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => response.json())
-        .then(data => {
-            // Hide loading indicator
-            loadingAlert.style.display = 'none';
-            
-            if (data.error) {
-                showError(data.error);
-                return;
-            }
-            
-            // Show results card
-            resultCard.style.display = 'block';
-            
-            // Handle chunked content
-            if (data.is_chunked) {
-                // Store session ID for future requests
-                textSessionId = data.session_id;
-                simpleCurrentChunk = 0;
-                simpleTotalChunks = data.total_chunks;
-                
-                // Update chunk info
-                simpleChunkDiv.style.display = 'block';
-                simpleChunkCounter.textContent = `0/${data.total_chunks}`;
-                chunkContent.textContent = 'Click "Show Next Chunk" to display the first chunk.';
-                
-                console.log(`Text will be processed in ${data.total_chunks} chunks.`);
-            } else {
-                // Single chunk (show directly)
-                simpleChunkDiv.style.display = 'block';
-                simpleChunkCounter.textContent = `1/1`;
-                chunkContent.textContent = data.chunk;
-                nextChunkBtn.style.display = 'none';
-            }
-        })
-        .catch(error => {
-            loadingAlert.style.display = 'none';
-            showError('An error occurred: ' + error.message);
+    // Handle Convert button click
+    const convertBtn = document.getElementById('convertBtn');
+    if (convertBtn) {
+        convertBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            processText(false);
         });
     }
     
-    // Function to get the next text chunk
-    function getNextTextChunk() {
-        // Show loading indicator
-        loadingMessage.textContent = 'Loading next chunk...';
-        loadingAlert.style.display = 'block';
-        
-        // Send request to get the next chunk
-        fetch('/get_next_text_chunk', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                session_id: textSessionId
-            })
-        })
-        .then(response => response.json())
-        .then(data => {
-            // Hide loading indicator
-            loadingAlert.style.display = 'none';
-            
-            if (data.error) {
-                // Special handling for "All chunks have been processed" error
-                if (data.error.includes("All chunks have been processed")) {
-                    console.log("All chunks processed");
-                    chunkContent.textContent = "All chunks have been displayed.";
-                    nextChunkBtn.disabled = true;
-                    return;
-                }
-                
-                showError(data.error);
-                return;
-            }
-            
-            // Update chunk counter and content
-            simpleCurrentChunk = data.current_chunk;
-            simpleChunkCounter.textContent = `${data.current_chunk}/${data.total_chunks}`;
-            chunkContent.textContent = data.chunk;
-            
-            // Disable button if this is the last chunk
-            if (data.is_last_chunk) {
-                nextChunkBtn.disabled = true;
-                nextChunkBtn.textContent = 'All Chunks Displayed';
-            }
-        })
-        .catch(error => {
-            loadingAlert.style.display = 'none';
-            showError('An error occurred: ' + error.message);
+    // Handle Chinese translation and speech
+    if (convertChineseBtn) {
+        convertChineseBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            processText(true);
         });
+    }
+    
+    // Handle text chunks display - no longer used, but kept for compatibility
+    if (showChunksBtn) {
+        showChunksBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            console.log("Show Chunks functionality has been removed");
+        });
+    }
+    
+    // Handle event listener setup for buttons
+    function setupButtonListeners() {
+        // Try to find the buttons, if they exist in the DOM
+        const nextChunkBtn = document.getElementById('nextChunkBtn');
+        if (nextChunkBtn) {
+            nextChunkBtn.addEventListener('click', function() {
+                console.log("Next chunk button is no longer used");
+            });
+        }
+        
+        const translateChunkBtn = document.getElementById('translateChunkBtn');
+        if (translateChunkBtn) {
+            translateChunkBtn.addEventListener('click', function() {
+                console.log("Translate chunk button is no longer used");
+            });
+        }
+    }
+    
+    // Set up listeners
+    setupButtonListeners();
+    
+    // Function to process text chunks - stub for compatibility
+    function processTextChunks() {
+        console.log("Text chunk processing is no longer used");
     }
     
     // Function to process text (main entry point)
@@ -491,50 +377,17 @@ document.addEventListener('DOMContentLoaded', function() {
     function displaySingleChunk(chunkInfo) {
         console.log("Displaying chunk:", chunkInfo);
         
-        // Use the existing elements from the page structure
-        const currentOriginalText = document.getElementById('currentOriginalText');
-        const currentTranslatedContainer = document.getElementById('currentTranslatedContainer');
-        const currentTranslatedText = document.getElementById('currentTranslatedText');
-        
-        // Show the chunk text display
-        chunkTextDiv.style.display = 'block';
-        
-        // Update the original text
-        if (currentOriginalText) {
-            console.log("Setting original text:", chunkInfo.original_text);
-            currentOriginalText.textContent = chunkInfo.original_text;
-        } else {
-            console.warn("Could not find currentOriginalText element");
-        }
-        
-        // Handle translation for Chinese mode
-        if (isChinese && chunkInfo.translated_text) {
-            if (currentTranslatedText && currentTranslatedContainer) {
-                console.log("Setting translated text:", chunkInfo.translated_text);
-                // Show translation
-                currentTranslatedContainer.style.display = 'block';
-                currentTranslatedText.textContent = chunkInfo.translated_text;
-                
-                // After a delay, hide original and show only translation if desired
-                // (Uncomment this if you want to hide original after translation)
-                /*
-                setTimeout(() => {
-                    if (currentOriginalText) currentOriginalText.style.display = 'none';
-                }, 2000);
-                */
-            } else {
-                console.warn("Could not find translation elements");
-            }
-        } else {
-            // For English mode, hide translation container
-            if (currentTranslatedContainer) {
-                currentTranslatedContainer.style.display = 'none';
-            }
-        }
-        
         // Update audio player and download link
         audioPlayer.src = chunkInfo.audio_url;
         downloadBtn.href = '/download/' + chunkInfo.filename;
+        
+        // Display translation if available
+        if (chunkInfo.translated_text && isChinese) {
+            translationDiv.textContent = chunkInfo.translated_text;
+            translationDiv.style.display = 'block';
+        } else {
+            translationDiv.style.display = 'none';
+        }
         
         // Automatically play the audio
         audioPlayer.play().catch(e => {
@@ -586,12 +439,12 @@ document.addEventListener('DOMContentLoaded', function() {
         errorAlert.style.display = 'none';
         loadingAlert.style.display = 'none';
         
+        // Hide translation display
+        translationDiv.style.display = 'none';
+        
+        // Hide chunking-related elements
         if (chunkProgress) {
             chunkProgress.style.display = 'none';
-        }
-        
-        if (translatedTextContainer) {
-            translatedTextContainer.style.display = 'none';
         }
         
         // Reset audio

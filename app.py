@@ -91,12 +91,18 @@ def chunk_text(text, max_tokens=MAX_TOKEN_LENGTH):
     breaking at sentence boundaries when possible.
     Uses tiktoken to accurately count tokens.
     """
+    total_tokens = num_tokens_from_string(text)
+    print(f"Total tokens in input text: {total_tokens}")
+    
     # If text is short enough, return it as is
-    if num_tokens_from_string(text) <= max_tokens:
+    if total_tokens <= max_tokens:
+        print(f"Text is short enough ({total_tokens} tokens), returning as single chunk")
         return [text]
     
     # Split text by sentences
     sentences = re.split(SENTENCE_SPLIT_PATTERN, text)
+    print(f"Split into {len(sentences)} sentences")
+    
     chunks = []
     current_chunk = ""
     current_tokens = 0
@@ -146,6 +152,11 @@ def chunk_text(text, max_tokens=MAX_TOKEN_LENGTH):
     # Add the last chunk if it's not empty
     if current_chunk:
         chunks.append(current_chunk.strip())
+    
+    # Print token counts for each chunk
+    for i, chunk in enumerate(chunks):
+        chunk_tokens = num_tokens_from_string(chunk)
+        print(f"Chunk {i+1}/{len(chunks)}: {chunk_tokens} tokens")
     
     return chunks
 
@@ -340,5 +351,187 @@ def serve_audio(filename):
 def download_file(filename):
     return send_from_directory('audio', filename, as_attachment=True)
 
+@app.route('/chunk_text_only', methods=['POST'])
+def chunk_text_only():
+    """Chunk text without processing it and return the first chunk"""
+    try:
+        # Make session permanent
+        session.permanent = True
+        
+        text = request.form.get('text', '')
+        if not text:
+            return jsonify({'error': 'No text provided'})
+        
+        print(f"Chunking text: {text[:100]}...")
+        
+        # Chunk the text
+        text_chunks = chunk_text(text)
+        
+        print(f"Created {len(text_chunks)} chunks. First chunk: {text_chunks[0][:100]}...")
+        
+        # If there's only one chunk, return it directly
+        if len(text_chunks) == 1:
+            print("Returning single chunk")
+            return jsonify({
+                'is_chunked': False,
+                'chunk': text_chunks[0]
+            })
+        
+        # Otherwise, set up a session for retrieving chunks
+        session_id = str(uuid.uuid4())
+        
+        # Store chunks in a temporary file to avoid session cookie size limits
+        chunks_dir = os.path.join(tempfile.gettempdir(), 'text_chunks')
+        os.makedirs(chunks_dir, exist_ok=True)
+        
+        # Save chunks to file
+        chunks_file = os.path.join(chunks_dir, f"{session_id}.json")
+        with open(chunks_file, 'w') as f:
+            json.dump(text_chunks, f)
+        
+        # Store only metadata in session
+        session['text_chunks_file'] = chunks_file
+        session['text_current_chunk'] = 0
+        session['text_total_chunks'] = len(text_chunks)
+        session['text_session_id'] = session_id
+        
+        # Ensure the session is saved
+        session.modified = True
+        
+        print(f"Created new text session: {session_id} with {len(text_chunks)} chunks")
+        print(f"Chunks saved to file: {chunks_file}")
+        print(f"Session keys: {list(session.keys())}")
+        
+        return jsonify({
+            'is_chunked': True,
+            'total_chunks': len(text_chunks),
+            'session_id': session_id
+        })
+    except Exception as e:
+        print(f"Error in chunk_text_only: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'An error occurred: {str(e)}'})
+
+@app.route('/get_next_text_chunk', methods=['POST'])
+def get_next_text_chunk():
+    """Get the next text chunk in sequence"""
+    try:
+        request_data = request.get_json() if request.is_json else {}
+        requested_session_id = request_data.get('session_id')
+        current_session_id = session.get('text_session_id')
+        translate_to_chinese = request_data.get('translate_to_chinese', False)
+        
+        print(f"get_next_text_chunk called with session_id: {requested_session_id}")
+        print(f"Current session ID in flask session: {current_session_id}")
+        print(f"Current session keys: {list(session.keys())}")
+        print(f"Translation requested: {translate_to_chinese}")
+        
+        # Get session data
+        chunks_file = session.get('text_chunks_file')
+        current_chunk_index = session.get('text_current_chunk', 0)
+        total_chunks = session.get('text_total_chunks', 0)
+        
+        # Load chunks from file
+        text_chunks = []
+        if chunks_file and os.path.exists(chunks_file):
+            with open(chunks_file, 'r') as f:
+                text_chunks = json.load(f)
+        
+        print(f"Session data: chunks_file={chunks_file}, chunks={len(text_chunks) if text_chunks else 0}, current_index={current_chunk_index}, total={total_chunks}")
+        
+        # Check if session data exists
+        if not text_chunks or current_chunk_index >= total_chunks:
+            print(f"No more chunks or session expired. chunks={bool(text_chunks)}, index={current_chunk_index}, total={total_chunks}")
+            return jsonify({'error': 'All chunks have been processed or session expired'})
+        
+        # Get the current chunk
+        chunk = text_chunks[current_chunk_index]
+        print(f"Retrieved chunk {current_chunk_index+1}/{total_chunks}: {chunk[:100]}...")
+        
+        # Translate to Chinese if requested
+        translated_text = None
+        if translate_to_chinese:
+            print(f"Translating chunk {current_chunk_index+1} to Chinese")
+            try:
+                # Translate text to Chinese
+                translation_response = client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[
+                        {"role": "system", "content": "You are a translator that translates text to Chinese. Provide only the translation without explanations."},
+                        {"role": "user", "content": f"Translate the following text to Simplified Chinese:\n\n{chunk}"}
+                    ],
+                    temperature=0.3
+                )
+                
+                translated_text = translation_response.choices[0].message.content
+                print(f"Translation successful, result: {translated_text[:100]}...")
+            except Exception as e:
+                print(f"Translation error: {str(e)}")
+                # Continue without translation if it fails
+        
+        # Increment the chunk index
+        current_chunk_index += 1
+        session['text_current_chunk'] = current_chunk_index
+        
+        # Save the session to ensure changes persist
+        session.modified = True
+        
+        # Check if this is the last chunk
+        is_last_chunk = current_chunk_index >= total_chunks
+        
+        response_data = {
+            'chunk': chunk,
+            'current_chunk': current_chunk_index,
+            'total_chunks': total_chunks,
+            'is_last_chunk': is_last_chunk
+        }
+        
+        # Add translation if available
+        if translated_text:
+            response_data['translated_text'] = translated_text
+        
+        return jsonify(response_data)
+    except Exception as e:
+        print(f"Error in get_next_text_chunk: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'An error occurred: {str(e)}'})
+
+@app.route('/translate_text', methods=['POST'])
+def translate_text():
+    """Translate a piece of text to Chinese without affecting session state"""
+    try:
+        # Get the text to translate
+        request_data = request.get_json() if request.is_json else {}
+        text = request_data.get('text', '')
+        
+        if not text:
+            return jsonify({'error': 'No text provided for translation'})
+        
+        print(f"Translating text to Chinese: {text[:100]}...")
+        
+        # Translate the text
+        translation_response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "You are a translator that translates text to Chinese. Provide only the translation without explanations."},
+                {"role": "user", "content": f"Translate the following text to Simplified Chinese:\n\n{text}"}
+            ],
+            temperature=0.3
+        )
+        
+        translated_text = translation_response.choices[0].message.content
+        print(f"Translation successful, result: {translated_text[:100]}...")
+        
+        return jsonify({
+            'translated_text': translated_text
+        })
+    except Exception as e:
+        print(f"Error in translate_text: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'An error occurred during translation: {str(e)}'})
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=9090, debug=True) 
+    app.run(host='0.0.0.0', port=9092, debug=True) 
