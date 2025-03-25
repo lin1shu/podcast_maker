@@ -70,4 +70,6 @@ config.json
 .podcast_maker_config.json
 
 # Generated audio files
-static/audio/*.mp3 
+static/audio/*.mp3
+audio/*.mp3
+*.mp3 
