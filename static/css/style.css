@@ -1,0 +1,50 @@
+/* Custom styles for the TTS application */
+
+body {
+    background-color: #f8f9fa;
+}
+
+.container {
+    max-width: 900px;
+}
+
+.card {
+    border-radius: 10px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.card-header {
+    background-color: #f1f8ff;
+    border-radius: 10px 10px 0 0 !important;
+}
+
+textarea {
+    resize: vertical;
+    min-height: 120px;
+}
+
+#audioPlayer {
+    border-radius: 30px;
+    height: 50px;
+    background-color: #f1f1f1;
+}
+
+.btn-primary {
+    background-color: #2d7ae5;
+    border-color: #2d7ae5;
+}
+
+.btn-primary:hover {
+    background-color: #1a68d1;
+    border-color: #1a68d1;
+}
+
+.btn-success {
+    background-color: #28a745;
+    border-color: #28a745;
+}
+
+.btn-success:hover {
+    background-color: #218838;
+    border-color: #218838;
+} 
