@@ -625,7 +625,7 @@ def test_connection():
     logger.info("Sending successful test_connection response")
     return jsonify({
         'status': 'success',
-        'message': 'Connection to Podcast Maker server established successfully!',
+        'message': 'Connection to VoiceText Pro server established successfully!',
         'timestamp': datetime.now().isoformat()
     })
 
@@ -637,5 +637,5 @@ def _build_cors_preflight_response():
     return response
 
 if __name__ == '__main__':
-    logger.info("Starting Podcast Maker server on port 9092")
+    logger.info("Starting VoiceText Pro server on port 9092")
     app.run(host='0.0.0.0', port=9092, debug=True) 
