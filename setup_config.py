@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-This script helps set up the OpenAI API key configuration for the Podcast Maker application.
+This script helps set up the OpenAI API key configuration for the VoiceText Pro application.
 It creates a config file in the user's home directory.
 """
 
@@ -11,10 +11,10 @@ import getpass
 import sys
 
 def main():
-    print("Podcast Maker - OpenAI API Key Configuration Setup")
+    print("VoiceText Pro - OpenAI API Key Configuration Setup")
     print("=================================================")
     print()
-    print("This script will help you set up your OpenAI API key for the Podcast Maker app.")
+    print("This script will help you set up your OpenAI API key for the VoiceText Pro app.")
     print("The key will be stored in a configuration file in your home directory.")
     print()
     
@@ -32,7 +32,7 @@ def main():
             sys.exit(0)
     
     # Create the config file
-    config_path = os.path.join(os.path.expanduser("~"), ".podcast_maker_config.json")
+    config_path = os.path.join(os.path.expanduser("~"), ".voicetext_pro_config.json")
     config_data = {"api_key": api_key}
     
     try:
@@ -45,7 +45,7 @@ def main():
             print(f"File permissions set to read/write for user only (chmod 600).")
         
         print(f"Configuration saved to: {config_path}")
-        print("You can now run the Podcast Maker application.")
+        print("You can now run the VoiceText Pro application.")
         
     except Exception as e:
         print(f"Error creating configuration file: {str(e)}")

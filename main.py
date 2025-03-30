@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Podcast Maker - Main Application
+VoiceText Pro - Main Application
 """
 
 
@@ -8,7 +8,7 @@ def main():
     """
     Main entry point for the application
     """
-    print("Podcast Maker application started")
+    print("VoiceText Pro application started")
     # TODO: Implement application logic
 
 

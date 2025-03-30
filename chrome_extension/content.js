@@ -11,4 +11,4 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 // This script remains running in the background of the active tab
-console.log("Podcast Maker content script loaded"); 
+console.log("VoiceText Pro content script loaded"); 
