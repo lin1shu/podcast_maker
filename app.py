@@ -12,6 +12,10 @@ import pydub
 import tiktoken
 import logging
 from flask_cors import CORS
+import pymongo
+from pymongo import MongoClient
+from bson.binary import Binary
+import hashlib
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG, 
@@ -30,6 +34,18 @@ app.secret_key = "podcast_maker_secret_key_fixed"
 # Set session to be permanent and last for 1 hour
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=1)
 app.config['SESSION_TYPE'] = 'filesystem'
+
+# MongoDB connection
+try:
+    mongo_client = MongoClient("mongodb://admin:password@localhost:27017/")
+    db = mongo_client["podcast_maker_db"]
+    podcast_collection = db["podcasts"]
+    logger.info("Connected to MongoDB successfully")
+except Exception as e:
+    logger.error(f"Error connecting to MongoDB: {str(e)}")
+    mongo_client = None
+    db = None
+    podcast_collection = None
 
 # Add CORS support
 @app.after_request
@@ -329,32 +345,150 @@ def process_single_chunk(text, voice, tone, is_chinese):
     # Default values
     original_text = text
     translated_text = None
+    existing_record_id = None
     
     logger.info(f"Processing single chunk: voice={voice}, tone={tone}, is_chinese={is_chinese}")
     logger.debug(f"Text length: {len(text)} characters")
     
+    # Generate content hash for duplicate detection
+    content_hash = hashlib.md5(f"{original_text}".encode('utf-8')).hexdigest()
+    
     # If Chinese translation is requested
     if is_chinese:
         logger.info("Translating text to Chinese")
-        # Translate text to Chinese
-        translation_response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": "You are a translator that translates text to Chinese. Provide only the translation without explanations."},
-                {"role": "user", "content": f"Translate the following text to Simplified Chinese:\n\n{text}"}
-            ],
-            temperature=0.3
-        )
         
-        translated_text = translation_response.choices[0].message.content
-        logger.info("Translation complete")
-        logger.debug(f"Translated text length: {len(translated_text)} characters")
+        # First check if we have a complete record with audio
+        if podcast_collection is not None:
+            existing_translation_with_audio = podcast_collection.find_one({
+                'original_text': original_text,
+                'is_chinese': True,
+                'audio_data': {'$exists': True}  # Only match records with audio_data
+            })
+            
+            if existing_translation_with_audio and existing_translation_with_audio.get('translated_text'):
+                logger.info("Found existing translation with audio in database, reusing it")
+                translated_text = existing_translation_with_audio.get('translated_text')
+                file_uuid = existing_translation_with_audio.get('chunk_id')
+                
+                # Create local files for compatibility
+                filename = f"chunk_{file_uuid}.mp3"
+                filepath = os.path.join('audio', filename)
+                
+                # Check if file already exists locally
+                if not os.path.exists(filepath):
+                    with open(filepath, 'wb') as f:
+                        f.write(existing_translation_with_audio['audio_data'])
+                    
+                json_filename = f"chunk_{file_uuid}.json"
+                json_filepath = os.path.join('audio', json_filename)
+                
+                if not os.path.exists(json_filepath):
+                    with open(json_filepath, 'w', encoding='utf-8') as f:
+                        json.dump({
+                            'original_text': original_text,
+                            'translated_text': translated_text
+                        }, f, ensure_ascii=False, indent=2)
+                
+                # Return the existing info
+                return {
+                    'original_text': original_text,
+                    'translated_text': translated_text,
+                    'audio_url': f'/audio/{filename}',
+                    'filename': filename,
+                    'json_filename': json_filename,
+                    'reused': True
+                }
+                
+            # If no complete record found, check if we have just the translation
+            # (this might be from a previous run that didn't complete with audio)
+            existing_translation = podcast_collection.find_one({
+                'original_text': original_text,
+                'is_chinese': True,
+                'translated_text': {'$exists': True}
+            })
+            
+            if existing_translation and existing_translation.get('translated_text'):
+                logger.info("Found existing translation in database (without audio), reusing it")
+                translated_text = existing_translation.get('translated_text')
+                existing_record_id = existing_translation.get('_id')
+                # We'll generate audio later in the function and update this record
+        
+        # If no existing translation found, create a new one
+        if not translated_text:
+            # Translate text to Chinese
+            translation_response = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": "You are a translator that translates text to Chinese. Provide only the translation without explanations."},
+                    {"role": "user", "content": f"Translate the following text to Simplified Chinese:\n\n{text}"}
+                ],
+                temperature=0.3
+            )
+            
+            translated_text = translation_response.choices[0].message.content
+            logger.info("Translation complete")
+            logger.debug(f"Translated text length: {len(translated_text)} characters")
+            
+            # Update content hash with the translated text
+            content_hash = hashlib.md5(f"{original_text}|{translated_text}".encode('utf-8')).hexdigest()
         
         # Use translated text for speech
         speech_text = translated_text
     else:
         # Use original text for speech
         speech_text = text
+        
+        # First check if we have a complete record with audio
+        if podcast_collection is not None:
+            existing_record_with_audio = podcast_collection.find_one({
+                'original_text': original_text,
+                'is_chinese': False,
+                'voice': voice,
+                'tone': tone,
+                'audio_data': {'$exists': True}  # Only match records with audio_data
+            })
+            
+            if existing_record_with_audio and 'audio_data' in existing_record_with_audio:
+                logger.info("Found existing audio in database with matching parameters, reusing it")
+                file_uuid = existing_record_with_audio.get('chunk_id')
+                # Create local files for compatibility
+                filename = f"chunk_{file_uuid}.mp3"
+                filepath = os.path.join('audio', filename)
+                
+                # Check if file already exists locally
+                if not os.path.exists(filepath):
+                    with open(filepath, 'wb') as f:
+                        f.write(existing_record_with_audio['audio_data'])
+                    
+                json_filename = f"chunk_{file_uuid}.json"
+                json_filepath = os.path.join('audio', json_filename)
+                
+                if not os.path.exists(json_filepath):
+                    with open(json_filepath, 'w', encoding='utf-8') as f:
+                        json.dump({
+                            'original_text': original_text,
+                            'translated_text': None
+                        }, f, ensure_ascii=False, indent=2)
+                
+                # Return the existing info
+                return {
+                    'original_text': original_text,
+                    'translated_text': None,
+                    'audio_url': f'/audio/{filename}',
+                    'filename': filename,
+                    'json_filename': json_filename,
+                    'reused': True
+                }
+            
+            # Check if we have a record without audio that we can update
+            existing_record = podcast_collection.find_one({
+                'original_text': original_text,
+                'is_chinese': False
+            })
+            
+            if existing_record:
+                logger.info("Found existing record without audio, will update it")
+                existing_record_id = existing_record.get('_id')
     
     # Get tone instructions
     instructions = TONE_INSTRUCTIONS.get(tone, TONE_INSTRUCTIONS["neutral"])
@@ -393,6 +527,47 @@ def process_single_chunk(text, voice, tone, is_chinese):
         json.dump(json_data, f, ensure_ascii=False, indent=2)
     
     logger.info(f"Text data saved to JSON file: {json_filepath}")
+    
+    # Store data in MongoDB if connection is available
+    if podcast_collection is not None:
+        try:
+            # Read audio file as binary data
+            with open(filepath, 'rb') as audio_file:
+                audio_binary = Binary(audio_file.read())
+            
+            # Create document for MongoDB
+            mongo_document = {
+                'chunk_id': str(file_uuid),
+                'original_text': original_text,
+                'translated_text': translated_text,
+                'voice': voice,
+                'tone': tone,
+                'is_chinese': is_chinese,
+                'audio_data': audio_binary,
+                'created_at': datetime.now(),
+                'content_hash': content_hash
+            }
+            
+            # If we found an existing record (just translation), update it instead of inserting
+            if existing_record_id:
+                logger.info(f"Updating existing record with _id: {existing_record_id} to add audio data")
+                podcast_collection.update_one(
+                    {'_id': existing_record_id},
+                    {'$set': {
+                        'chunk_id': str(file_uuid),
+                        'voice': voice,
+                        'tone': tone,
+                        'audio_data': audio_binary,
+                        'updated_at': datetime.now(),
+                        'content_hash': content_hash
+                    }}
+                )
+            else:
+                # Insert new record
+                result = podcast_collection.insert_one(mongo_document)
+                logger.info(f"Stored chunk in MongoDB with _id: {result.inserted_id}")
+        except Exception as e:
+            logger.error(f"Error storing chunk in MongoDB: {str(e)}")
     
     # Return information about the processed chunk
     return {
@@ -630,6 +805,9 @@ def translate_text():
         translated_text = translation_response.choices[0].message.content
         logger.info("Translation successful, result: {translated_text[:100]}...")
         
+        # We no longer store standalone translations in MongoDB
+        # The translation will only be stored when audio is also generated
+        
         return jsonify({
             'translated_text': translated_text
         })
@@ -638,6 +816,114 @@ def translate_text():
         import traceback
         traceback.print_exc()
         return jsonify({'error': f'An error occurred during translation: {str(e)}'})
+
+@app.route('/get_podcast_history', methods=['GET'])
+def get_podcast_history():
+    """Retrieve podcast history from MongoDB"""
+    try:
+        if podcast_collection is None:
+            return jsonify({
+                'error': 'MongoDB connection is not available'
+            })
+        
+        # Get all documents except the audio binary data (which could be large)
+        results = list(podcast_collection.find({}, {'audio_data': 0}))
+        
+        # Convert ObjectId to string for JSON serialization
+        for result in results:
+            result['_id'] = str(result['_id'])
+            result['created_at'] = result['created_at'].isoformat() if 'created_at' in result else None
+        
+        return jsonify({
+            'status': 'success',
+            'total_records': len(results),
+            'records': results
+        })
+    except Exception as e:
+        logger.error(f"Error retrieving podcast history: {str(e)}")
+        return jsonify({'error': f'An error occurred: {str(e)}'})
+
+@app.route('/get_podcast_audio/<chunk_id>', methods=['GET'])
+def get_podcast_audio(chunk_id):
+    """Retrieve podcast audio from MongoDB by chunk_id"""
+    try:
+        if podcast_collection is None:
+            return jsonify({
+                'error': 'MongoDB connection is not available'
+            })
+        
+        # Find the document by chunk_id
+        result = podcast_collection.find_one({'chunk_id': chunk_id})
+        
+        if not result or 'audio_data' not in result:
+            return jsonify({'error': 'Audio not found for the given chunk_id'})
+        
+        # Return audio as binary data
+        audio_data = result['audio_data']
+        
+        return Response(
+            audio_data, 
+            mimetype='audio/mpeg',
+            headers={
+                'Content-Disposition': f'attachment; filename=chunk_{chunk_id}.mp3',
+                'Access-Control-Allow-Origin': '*'
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error retrieving podcast audio: {str(e)}")
+        return jsonify({'error': f'An error occurred: {str(e)}'})
+
+@app.route('/podcast_list', methods=['GET'])
+def podcast_list():
+    """Display a web page with all podcast records from MongoDB"""
+    try:
+        if podcast_collection is None:
+            return render_template('podcast_list.html', 
+                                  records=[], 
+                                  total_records=0,
+                                  page=1,
+                                  per_page=10,
+                                  total_pages=1)
+        
+        # Get page number from query parameters, default to 1
+        page = int(request.args.get('page', 1))
+        per_page = 10  # Number of records per page
+        
+        # Calculate skip value for pagination
+        skip = (page - 1) * per_page
+        
+        # Get total record count
+        total_records = podcast_collection.count_documents({})
+        
+        # Calculate total pages
+        total_pages = (total_records + per_page - 1) // per_page
+        
+        # Get paginated records sorted by creation date (newest first)
+        records = list(podcast_collection.find({}, {'audio_data': 0})
+                      .sort('created_at', -1)
+                      .skip(skip)
+                      .limit(per_page))
+        
+        # Format dates and IDs for template rendering
+        for record in records:
+            record['_id'] = str(record['_id'])
+            record['created_at'] = record['created_at'].strftime('%Y-%m-%d %H:%M:%S') if 'created_at' in record else 'N/A'
+        
+        return render_template('podcast_list.html', 
+                              records=records, 
+                              total_records=total_records,
+                              page=page,
+                              per_page=per_page,
+                              total_pages=total_pages)
+    except Exception as e:
+        logger.error(f"Error rendering podcast list: {str(e)}")
+        return render_template('podcast_list.html', 
+                              records=[], 
+                              error=str(e),
+                              total_records=0,
+                              page=1,
+                              per_page=10,
+                              total_pages=1)
 
 @app.route('/test_connection', methods=['GET', 'OPTIONS'])
 def test_connection():
@@ -666,5 +952,54 @@ def _build_cors_preflight_response():
     return response
 
 if __name__ == '__main__':
-    logger.info("Starting VoiceText Pro server on port 9092")
-    app.run(host='0.0.0.0', port=9092, debug=True) 
+    # Check if port is already in use
+    import socket
+    import subprocess
+    import time
+    
+    def is_port_in_use(port):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            return s.connect_ex(('localhost', port)) == 0
+    
+    def kill_process_using_port(port):
+        try:
+            # Find PID of process using the port
+            result = subprocess.run(
+                f"lsof -i :{port} -t", 
+                shell=True, 
+                capture_output=True, 
+                text=True
+            )
+            if result.stdout:
+                # Extract PIDs (could be multiple)
+                pids = result.stdout.strip().split('\n')
+                
+                # Kill each process
+                for pid in pids:
+                    if pid.strip():
+                        logger.info(f"Killing process {pid} using port {port}")
+                        subprocess.run(f"kill {pid}", shell=True)
+                        
+                # Wait a bit to ensure processes are terminated
+                time.sleep(1)
+                return True
+            return False
+        except Exception as e:
+            logger.error(f"Error killing process on port {port}: {str(e)}")
+            return False
+    
+    # Use port 9092
+    port = 9092
+    
+    # Check if port is in use
+    if is_port_in_use(port):
+        logger.warning(f"Port {port} is already in use. Attempting to kill existing process...")
+        if kill_process_using_port(port):
+            logger.info(f"Successfully killed process using port {port}")
+        else:
+            logger.error(f"Could not kill process. Please manually stop it.")
+            exit(1)
+    
+    # Start the server
+    logger.info(f"Starting VoiceText Pro server on port {port}")
+    app.run(host='0.0.0.0', port=port, debug=True, use_reloader=False) 
