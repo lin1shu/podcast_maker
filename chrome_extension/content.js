@@ -7,6 +7,41 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     const selectedText = window.getSelection().toString().trim();
     sendResponse({ text: selectedText });
   }
+  else if (request.action === 'replaceSelectedText') {
+    const selection = window.getSelection();
+    const range = selection.getRangeAt(0);
+    
+    // Store information about the selection for later use
+    const selectionInfo = {
+      text: selection.toString().trim(),
+      nodeType: selection.anchorNode.nodeType,
+      success: false
+    };
+    
+    try {
+      // Only proceed if we have a valid selection
+      if (selection.rangeCount > 0 && selectionInfo.text) {
+        // Delete the selected content
+        range.deleteContents();
+        
+        // Create a text node with the replacement text
+        const replacementNode = document.createTextNode(request.translatedText);
+        
+        // Insert the replacement text
+        range.insertNode(replacementNode);
+        
+        // Collapse the selection to after the inserted node
+        selection.collapseToEnd();
+        
+        selectionInfo.success = true;
+      }
+    } catch (error) {
+      console.error('Error replacing text:', error);
+      selectionInfo.error = error.message;
+    }
+    
+    sendResponse(selectionInfo);
+  }
   return true; // Indicates we will send a response asynchronously
 });
 

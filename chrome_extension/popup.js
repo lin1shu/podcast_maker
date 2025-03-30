@@ -3,6 +3,7 @@ let textArea, generateBtn, audioPlayer, downloadLink, wordCountSpan, statusDiv;
 let translationArea, translateBtn, voiceSelect, toneSelect, chineseCheckbox;
 let audioContainer, translationContainer;
 let settingsToggle, settingsPanel, currentSettings, currentVoice, currentTone;
+let lastTranslation = null; // Store the last translation result
 
 // Global variable to track audio processing state
 let isProcessingAudio = false;
@@ -251,12 +252,37 @@ function getSelectedText() {
       console.log('Getting selected text from tab:', activeTab.id);
       
       try {
+        // Use scripting API for more reliable text selection retrieval
         chrome.scripting.executeScript({
           target: {tabId: activeTab.id},
-          function: function() {
-            const selection = window.getSelection().toString().trim();
-            console.log('Selected text in page:', selection);
-            return selection;
+          function: () => {
+            const selection = window.getSelection();
+            const text = selection.toString().trim();
+            
+            // If there's a selection, try to highlight it more prominently
+            if (text && selection.rangeCount > 0) {
+              try {
+                // Make the selection more visible by applying a CSS class
+                // This helps maintain focus on the selected text
+                const range = selection.getRangeAt(0);
+                const span = document.createElement('span');
+                span.className = 'voicetext-pro-selection';
+                span.style.backgroundColor = 'rgba(255, 255, 0, 0.3)';
+                span.appendChild(range.extractContents());
+                range.insertNode(span);
+                
+                // Reselect the text within the span
+                selection.removeAllRanges();
+                const newRange = document.createRange();
+                newRange.selectNodeContents(span);
+                selection.addRange(newRange);
+              } catch (e) {
+                console.error('Error highlighting selection:', e);
+                // If highlighting fails, just return the text
+              }
+            }
+            
+            return text;
           },
         }, (results) => {
           if (chrome.runtime.lastError) {
@@ -376,9 +402,12 @@ function handleTranslateClick() {
   translationContainer.innerHTML = '';
   translationContainer.style.display = 'none';
   
+  // Reset last translation
+  lastTranslation = null;
+  
   console.log('Processing translation for text:', text.substring(0, 30) + (text.length > 30 ? '...' : ''));
   
-  // Call the translation function
+  // Call the translation function - this will trigger text replacement and audio generation
   getTranslation(text);
 }
 
@@ -415,8 +444,15 @@ function handleGenerateClick() {
     stopAllAudio();
     audioContainer.style.display = 'none';
     audioContainer.innerHTML = '';
-    translationContainer.style.display = 'none';
-    translationContainer.innerHTML = '';
+    
+    // Don't clear translation container if it already has content
+    if (translationContainer.innerHTML.trim() === '') {
+      translationContainer.style.display = 'none';
+      translationContainer.innerHTML = '';
+    }
+    
+    // Determine if this was triggered automatically after translation
+    const isAfterTranslation = lastTranslation !== null && translationContainer.style.display === 'block';
     
     // Gather settings
     const requestData = {
@@ -431,7 +467,8 @@ function handleGenerateClick() {
       voice: requestData.voice,
       tone: requestData.tone,
       is_chinese: requestData.is_chinese,
-      textLength: text.length
+      textLength: text.length,
+      isAfterTranslation: isAfterTranslation
     });
     
     console.log('Full request data:', JSON.stringify(requestData).substring(0, 500));
@@ -479,13 +516,19 @@ function handleGenerateClick() {
           console.log('Full audio URL:', fullAudioUrl);
           
           if (fullAudioUrl) {
+            // Show the audio player and start audio playback
             showAudioPlayer(fullAudioUrl, filename);
+            
             // Hide the status message when audio is ready
             statusDiv.style.display = 'none';
             
-            // If Chinese translation was requested and available, show it
-            if (requestData.is_chinese && data.chunk_info && data.chunk_info.translated_text) {
+            // If Chinese translation was requested and available, and we haven't already shown it
+            if (requestData.is_chinese && data.chunk_info && data.chunk_info.translated_text && !isAfterTranslation) {
               showTranslation(data.chunk_info.original_text, data.chunk_info.translated_text);
+              
+              // If this wasn't triggered after translation, replace text on the page
+              // Otherwise, text replacement was already done during translation
+              replaceTextOnPage(data.chunk_info.translated_text);
             }
           } else {
             isProcessingAudio = false;
@@ -591,11 +634,30 @@ function getTranslation(text) {
         }
         
         if (data.translated_text) {
+          // Store the translation for potential use
+          lastTranslation = {
+            original: text,
+            translated: data.translated_text
+          };
+          
           // Display the translation in the UI
           showTranslation(text, data.translated_text);
+          
           // Hide the status message when translation is ready
           statusDiv.style.display = 'none';
           console.log('Translation displayed successfully');
+          
+          // First replace text on the page immediately
+          replaceTextOnPage(data.translated_text);
+          
+          // Then automatically trigger audio generation
+          setTimeout(() => {
+            // Only generate audio if we're not already processing audio
+            if (!isProcessingAudio && !currentAudioElement) {
+              console.log('Automatically starting audio generation after translation');
+              handleGenerateClick();
+            }
+          }, 500); // Short delay to ensure text replacement completes first
         } else {
           console.error('No translated text in response');
           showError('Translation error: No translated text received');
@@ -624,6 +686,105 @@ function getTranslation(text) {
   xhr.send(JSON.stringify({ text: text }));
 }
 
+// Function to replace text on the page
+function replaceTextOnPage(translatedText) {
+  console.log('Automatically replacing text on page with translation:', translatedText.substring(0, 30) + '...');
+  
+  // Get the active tab
+  chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+    if (tabs && tabs.length > 0) {
+      const activeTab = tabs[0];
+      
+      // Use direct script injection for more reliable text replacement
+      chrome.scripting.executeScript({
+        target: {tabId: activeTab.id},
+        function: replaceSelectedTextInPage,
+        args: [translatedText]
+      }, (results) => {
+        if (chrome.runtime.lastError) {
+          console.error('Error executing script:', chrome.runtime.lastError);
+          showError('Error: Could not replace text - ' + chrome.runtime.lastError.message);
+          return;
+        }
+        
+        console.log('Script execution results:', results);
+        if (results && results[0] && results[0].result && results[0].result.success) {
+          console.log('Text replacement successful');
+          showSuccess('Text replaced with Chinese translation');
+          // Do not close the popup, keep it open for audio playback
+        } else {
+          const errorMsg = results?.[0]?.result?.error || 'No text selected or selection lost. Please select text again.';
+          console.error('Text replacement failed:', errorMsg);
+          showError('Could not replace text: ' + errorMsg);
+        }
+      });
+    } else {
+      showError('No active tab found');
+    }
+  });
+}
+
+// Function to be injected into the page to replace selected text
+function replaceSelectedTextInPage(translatedText) {
+  console.log('Content script replacing text with:', translatedText.substring(0, 30) + '...');
+  
+  // First, check if we have a highlighted selection from our extension
+  const highlightedElement = document.querySelector('.voicetext-pro-selection');
+  const selection = window.getSelection();
+  
+  // Store information about the selection
+  const selectionInfo = {
+    success: false,
+    text: selection.toString().trim()
+  };
+  
+  try {
+    // Case 1: We have our highlighted span from the extension
+    if (highlightedElement) {
+      console.log('Found highlighted element from extension');
+      
+      // Replace the content of the highlighted span
+      highlightedElement.textContent = translatedText;
+      
+      // Remove the highlighting but keep the text
+      const parent = highlightedElement.parentNode;
+      if (parent) {
+        parent.replaceChild(document.createTextNode(translatedText), highlightedElement);
+      }
+      
+      selectionInfo.success = true;
+      return selectionInfo;
+    }
+    
+    // Case 2: We still have a valid selection
+    if (selection && selection.rangeCount > 0 && selectionInfo.text) {
+      console.log('Using current selection');
+      const range = selection.getRangeAt(0);
+      
+      // Delete the selected content
+      range.deleteContents();
+      
+      // Create a text node with the replacement text
+      const replacementNode = document.createTextNode(translatedText);
+      
+      // Insert the replacement text
+      range.insertNode(replacementNode);
+      
+      // Collapse the selection to after the inserted node
+      selection.collapseToEnd();
+      
+      selectionInfo.success = true;
+    } else {
+      selectionInfo.error = 'No valid text selection found';
+    }
+  } catch (error) {
+    console.error('Error replacing text:', error);
+    selectionInfo.error = error.message;
+  }
+  
+  return selectionInfo;
+}
+
 // Show audio player
 function showAudioPlayer(audioUrl, filename) {
   console.log('Creating audio player for URL:', audioUrl);
@@ -647,11 +808,12 @@ function showAudioPlayer(audioUrl, filename) {
   audioContainer.innerHTML = audioHTML;
   audioContainer.style.display = 'block';
   
-  // Get the newly created audio element and play it programmatically
+  // Get the newly created audio element
   const audioElement = document.getElementById('audio-element');
   if (audioElement) {
     // Track the current audio element
     currentAudioElement = audioElement;
+    isProcessingAudio = true; // Make sure we keep track that audio is active
     
     // Listen for when playback ends to reset our tracking
     audioElement.addEventListener('ended', function() {
@@ -660,12 +822,40 @@ function showAudioPlayer(audioUrl, filename) {
       isProcessingAudio = false;
     });
     
-    // Start playback
-    audioElement.play().catch(e => {
-      console.error('Error playing audio:', e);
+    // Listen for errors
+    audioElement.addEventListener('error', function(e) {
+      console.error('Audio playback error:', e);
       currentAudioElement = null;
       isProcessingAudio = false;
     });
+    
+    // Listen for pause
+    audioElement.addEventListener('pause', function() {
+      console.log('Audio playback paused');
+      // Keep currentAudioElement reference but update processing state
+      isProcessingAudio = false;
+    });
+    
+    // Listen for play
+    audioElement.addEventListener('play', function() {
+      console.log('Audio playback started/resumed');
+      isProcessingAudio = true;
+    });
+    
+    // Start playback
+    console.log('Starting audio playback');
+    const playPromise = audioElement.play();
+    
+    if (playPromise !== undefined) {
+      playPromise.then(() => {
+        console.log('Audio playback started successfully');
+      }).catch(e => {
+        console.error('Error playing audio:', e);
+        // Don't reset currentAudioElement since the user may press play manually
+        // Just update the processing state
+        isProcessingAudio = false;
+      });
+    }
   }
 }
 

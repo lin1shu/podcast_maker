@@ -3,7 +3,7 @@
   "name": "VoiceText Pro",
   "version": "1.0",
   "description": "Convert text to natural-sounding audio with translation capabilities",
-  "permissions": ["activeTab", "scripting", "storage"],
+  "permissions": ["activeTab", "scripting", "storage", "tabs"],
   "host_permissions": [
     "http://192.168.4.106:9092/*"
   ],

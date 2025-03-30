@@ -123,6 +123,15 @@ label {
   background-color: #2980b9;
 }
 
+.btn-secondary {
+  background-color: #6c757d;
+  color: white;
+}
+
+.btn-secondary:hover {
+  background-color: #5a6268;
+}
+
 .status-message {
   margin-top: 15px;
   padding: 8px;
