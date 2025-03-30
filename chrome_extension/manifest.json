@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Podcast Maker",
+  "name": "VoiceText Pro",
   "version": "1.0",
-  "description": "Create podcasts from selected text",
+  "description": "Convert text to natural-sounding audio with translation capabilities",
   "permissions": ["activeTab", "scripting", "storage"],
   "host_permissions": [
     "http://192.168.4.106:9092/*"

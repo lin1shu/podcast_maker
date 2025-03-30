@@ -299,7 +299,7 @@ function testServerConnection() {
       statusDiv.style.display = 'none';
     } else {
       console.error('XHR connection failed with status:', xhr.status);
-      showError('Cannot connect to Podcast Maker server. Make sure it is running at http://192.168.4.106:9092');
+      showError('Cannot connect to VoiceText Pro server. Make sure it is running at http://192.168.4.106:9092');
     }
   };
   xhr.ontimeout = function() {
@@ -308,7 +308,7 @@ function testServerConnection() {
   };
   xhr.onerror = function(e) {
     console.error('XHR request error:', e);
-    showError('Cannot connect to Podcast Maker server. Make sure it is running at http://192.168.4.106:9092');
+    showError('Cannot connect to VoiceText Pro server. Make sure it is running at http://192.168.4.106:9092');
   };
   console.log('Sending XHR request to test_connection...');
   xhr.send();
@@ -392,7 +392,6 @@ function handleGenerateClick() {
         try {
           const data = JSON.parse(xhr.responseText);
           console.log('Audio generated successfully, parsed JSON:', JSON.stringify(data).substring(0, 500));
-          showSuccess('Audio generated successfully!');
           
           if (data.error) {
             console.error('Server returned error:', data.error);
@@ -403,8 +402,7 @@ function handleGenerateClick() {
           // Handle chunked responses
           if (data.is_chunked) {
             console.log('Chunked response detected, chunks:', data.total_chunks);
-            // For simplicity, we'll just notify the user that the text is being processed in chunks
-            showSuccess(`Text is being processed in ${data.total_chunks} chunks. Check server logs for progress.`);
+            // Just log it without showing a success message
             return;
           }
           
@@ -421,6 +419,8 @@ function handleGenerateClick() {
           
           if (fullAudioUrl) {
             showAudioPlayer(fullAudioUrl, filename);
+            // Hide the status message when audio is ready
+            statusDiv.style.display = 'none';
           }
           
           // If Chinese translation was requested and available, show it
@@ -500,6 +500,8 @@ function getTranslation(text) {
         }
         
         showTranslation(text, data.translated_text);
+        // Hide the status message when translation is ready
+        statusDiv.style.display = 'none';
       } catch (parseError) {
         console.error('Error parsing JSON response:', parseError);
         showError('Error parsing translation response');
