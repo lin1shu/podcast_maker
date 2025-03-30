@@ -74,6 +74,10 @@ static/audio/*.mp3
 audio/*.mp3
 *.mp3
 
+# Generated JSON text files
+audio/*.json
+static/audio/*.json
+
 # Log files
 app.log
 *.log 

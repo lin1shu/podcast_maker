@@ -254,4 +254,46 @@ audio {
 .current-settings span {
   font-weight: 500;
   color: #3498db;
+}
+
+/* Buttons */
+.button-container {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+  justify-content: center;
+}
+
+.download-button {
+  display: inline-block;
+  background-color: #4285f4;
+  color: white;
+  padding: 8px 16px;
+  border-radius: 4px;
+  text-decoration: none;
+  cursor: pointer;
+  border: none;
+  font-weight: bold;
+  transition: background-color 0.2s;
+}
+
+.download-button:hover {
+  background-color: #2b6ad9;
+}
+
+.download-json-button {
+  display: inline-block;
+  background-color: #34a853;
+  color: white;
+  padding: 8px 16px;
+  border-radius: 4px;
+  text-decoration: none;
+  cursor: pointer;
+  border: none;
+  font-weight: bold;
+  transition: background-color 0.2s;
+}
+
+.download-json-button:hover {
+  background-color: #2d8644;
 } 

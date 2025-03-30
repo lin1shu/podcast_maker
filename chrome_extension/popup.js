@@ -97,11 +97,6 @@ document.addEventListener('DOMContentLoaded', function() {
           
           // Display translation if available
           if (results.translatedText) {
-            showTranslation(results.originalText, results.translatedText);
-          }
-          
-          // Display audio player if available
-          if (results.audioUrl) {
             showAudioPlayer(results.audioUrl, results.filename);
             statusDiv.style.display = 'none';
           }
@@ -708,11 +703,9 @@ function handleGenerateClick() {
     audioContainer.style.display = 'none';
     audioContainer.innerHTML = '';
     
-    // Don't clear translation container if it already has content
-    if (translationContainer.innerHTML.trim() === '') {
-      translationContainer.style.display = 'none';
-      translationContainer.innerHTML = '';
-    }
+    // Always hide translation container
+    translationContainer.style.display = 'none';
+    translationContainer.innerHTML = '';
     
     // Determine if this was triggered automatically after translation
     const isAfterTranslation = lastTranslation !== null && translationContainer.style.display === 'block';
@@ -770,27 +763,40 @@ function handleGenerateClick() {
           // For single chunk or completed chunks, show audio player
           const audioUrl = data.is_chunked ? null : data.chunk_info.audio_url;
           const filename = data.is_chunked ? null : data.chunk_info.filename;
+          const jsonFilename = data.is_chunked ? null : data.chunk_info.json_filename;
           
           console.log('Audio URL:', audioUrl);
           console.log('Filename:', filename);
+          console.log('JSON Filename:', jsonFilename);
           
           // Update audio URL to use the IP address instead of localhost
           const fullAudioUrl = audioUrl ? `http://192.168.4.106:9092${audioUrl}` : null;
           console.log('Full audio URL:', fullAudioUrl);
           
+          // Update JSON URL to use the IP address
+          const fullJsonUrl = jsonFilename ? `http://192.168.4.106:9092/text/${jsonFilename}` : null;
+          console.log('Full JSON URL:', fullJsonUrl);
+          
           if (fullAudioUrl) {
             // Show the audio player and start audio playback
             showAudioPlayer(fullAudioUrl, filename);
             
+            // Store the JSON data URL for potential later use
+            if (fullJsonUrl) {
+              chrome.storage.local.set({ 'lastTextJsonUrl': fullJsonUrl });
+            }
+            
             // Hide the status message when audio is ready
             statusDiv.style.display = 'none';
             
-            // If Chinese translation was requested and available, and we haven't already shown it
+            // Don't show the Chinese translation even if it's available
+            // Keep the rest of the logic (like replacing text on page) but don't display in popup
             if (requestData.is_chinese && data.chunk_info && data.chunk_info.translated_text && !isAfterTranslation) {
+              // Store the translation but don't display in popup
               showTranslation(data.chunk_info.original_text, data.chunk_info.translated_text);
               
-              // If this wasn't triggered after translation, replace text on the page
-              // Otherwise, text replacement was already done during translation
+              // Replace text on the page with the translation
+              console.log('Replacing text on the page with translation from audio generation');
               replaceTextOnPage(data.chunk_info.translated_text);
             }
           } else {
@@ -833,43 +839,19 @@ function handleGenerateClick() {
 
 // Show translation in UI
 function showTranslation(original, translated) {
-  console.log('Showing translation:', translated.substring(0, 50) + (translated.length > 50 ? '...' : ''));
+  console.log('Translation received but not showing in UI per user preference');
   
-  // Clear previous content
-  translationContainer.innerHTML = '';
+  // Store the translation for tracking purposes without displaying it in the UI
+  lastTranslation = {
+    original: original,
+    translated: translated
+  };
   
-  // Create translated text section
-  const translatedDiv = document.createElement('div');
-  translatedDiv.className = 'text-section translated';
-  translatedDiv.style.padding = '10px';
-  translatedDiv.style.backgroundColor = '#f9f9f9';
-  translatedDiv.style.border = '1px solid #ddd';
-  translatedDiv.style.borderRadius = '5px';
-  translatedDiv.style.marginTop = '15px';
+  // Always hide the translation container
+  translationContainer.style.display = 'none';
   
-  const translatedLabel = document.createElement('div');
-  translatedLabel.className = 'text-label';
-  translatedLabel.textContent = 'Chinese Translation:';
-  translatedLabel.style.fontWeight = 'bold';
-  translatedLabel.style.marginBottom = '5px';
-  
-  const translatedContent = document.createElement('div');
-  translatedContent.className = 'text-content';
-  translatedContent.textContent = translated;
-  translatedContent.style.lineHeight = '1.4';
-  
-  translatedDiv.appendChild(translatedLabel);
-  translatedDiv.appendChild(translatedContent);
-  
-  // Add to container
-  translationContainer.appendChild(translatedDiv);
-  
-  // Make sure the translation container is visible
-  translationContainer.style.display = 'block';
-  
-  // Log visibility for debugging
-  console.log('Translation container display style:', translationContainer.style.display);
-  console.log('Translation content added to DOM');
+  // Still replace text on the webpage (done by the caller)
+  return translated;
 }
 
 // Get translation from server
@@ -897,21 +879,14 @@ function getTranslation(text) {
         }
         
         if (data.translated_text) {
-          // Store the translation for potential use
-          lastTranslation = {
-            original: text,
-            translated: data.translated_text
-          };
-          
-          // Display the translation in the UI
+          // Store the translation data but don't display in popup
           showTranslation(text, data.translated_text);
           
           // Hide the status message when translation is ready
           statusDiv.style.display = 'none';
-          console.log('Translation displayed successfully');
           
           // First replace text on the page immediately
-          console.log('Immediately replacing text on the page with translation');
+          console.log('Replacing text on the page with translation');
           replaceTextOnPage(data.translated_text);
           
           // Then automatically trigger audio generation after a short delay
@@ -1069,7 +1044,8 @@ function replaceTextOnPage(translatedText) {
       }, (results) => {
         if (chrome.runtime.lastError) {
           console.error('Error executing script:', chrome.runtime.lastError);
-          showError('Error: Could not replace text - ' + chrome.runtime.lastError.message);
+          // Don't show error to user since text replacement might have actually succeeded
+          // showError('Error: Could not replace text - ' + chrome.runtime.lastError.message);
           return;
         }
         
@@ -1077,92 +1053,56 @@ function replaceTextOnPage(translatedText) {
         if (results && results[0] && results[0].result && results[0].result.success) {
           console.log('Text replacement successful using method:', results[0].result.method);
           showSuccess('Text replaced with Chinese translation');
-          // Do not close the popup, keep it open for audio playback
         } else {
           const errorMsg = results?.[0]?.result?.error || 'No text selected or selection lost. Please select text again.';
           const method = results?.[0]?.result?.method || 'unknown';
           console.error('Text replacement failed with method:', method, 'Error:', errorMsg);
-          showError('Could not replace text: ' + errorMsg);
+          
+          // Don't show any message to the user
+          // Just log the error for debugging
         }
       });
     } else {
-      showError('No active tab found');
+      // Don't show error if tab is not found
+      console.error('No active tab found');
     }
   });
 }
 
-// Show audio player
+// Function to show audio player
 function showAudioPlayer(audioUrl, filename) {
-  console.log('Creating audio player for URL:', audioUrl);
-  
-  // Stop all currently playing audio
+  console.log('Showing audio player for:', audioUrl);
   stopAllAudio();
   
-  // Clear previous content
+  if (!audioUrl) {
+    console.error('No audio URL provided to showAudioPlayer');
+    return;
+  }
+  
+  // Clear any existing audio containers
   audioContainer.innerHTML = '';
-  
-  // Create audio player HTML
-  const audioHTML = `
-    <div class="audio-player">
-      <h3>Your Audio:</h3>
-      <audio controls src="${audioUrl}" style="width: 100%; margin: 10px 0;" id="audio-element"></audio>
-      <a href="${audioUrl}" download="${filename}" class="download-button">Download Audio</a>
-    </div>
-  `;
-  
-  // Set the HTML
-  audioContainer.innerHTML = audioHTML;
   audioContainer.style.display = 'block';
   
-  // Get the newly created audio element
-  const audioElement = document.getElementById('audio-element');
-  if (audioElement) {
-    // Track the current audio element
-    currentAudioElement = audioElement;
-    isProcessingAudio = true; // Make sure we keep track that audio is active
-    
-    // Listen for when playback ends to reset our tracking
-    audioElement.addEventListener('ended', function() {
-      console.log('Audio playback ended naturally');
-      currentAudioElement = null;
-      isProcessingAudio = false;
-    });
-    
-    // Listen for errors
-    audioElement.addEventListener('error', function(e) {
-      console.error('Audio playback error:', e);
-      currentAudioElement = null;
-      isProcessingAudio = false;
-    });
-    
-    // Listen for pause
-    audioElement.addEventListener('pause', function() {
-      console.log('Audio playback paused');
-      // Keep currentAudioElement reference but update processing state
-      isProcessingAudio = false;
-    });
-    
-    // Listen for play
-    audioElement.addEventListener('play', function() {
-      console.log('Audio playback started/resumed');
-      isProcessingAudio = true;
-    });
-    
-    // Start playback
-    console.log('Starting audio playback');
-    const playPromise = audioElement.play();
-    
-    if (playPromise !== undefined) {
-      playPromise.then(() => {
-        console.log('Audio playback started successfully');
-      }).catch(e => {
-        console.error('Error playing audio:', e);
-        // Don't reset currentAudioElement since the user may press play manually
-        // Just update the processing state
-        isProcessingAudio = false;
-      });
-    }
-  }
+  // Create the audio element
+  const audioElement = document.createElement('audio');
+  audioElement.controls = true;
+  audioElement.src = audioUrl;
+  audioElement.className = 'audio-player';
+  audioElement.id = 'currentAudio';
+  
+  // Track this as the current audio element
+  currentAudioElement = audioElement;
+  
+  // Add elements to container
+  audioContainer.appendChild(audioElement);
+  
+  // Play the audio (this might fail due to browser autoplay policies)
+  audioElement.play().catch(e => {
+    console.log('Autoplay failed, user needs to click play:', e.message);
+  });
+  
+  // Reset processing state
+  isProcessingAudio = false;
 }
 
 // Function to stop all audio playback

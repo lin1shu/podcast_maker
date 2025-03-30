@@ -2,7 +2,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const form = document.getElementById('ttsForm');
     const resultCard = document.getElementById('resultCard');
     const audioPlayer = document.getElementById('audioPlayer');
-    const downloadBtn = document.getElementById('downloadBtn');
     const errorAlert = document.getElementById('errorAlert');
     const errorMessage = document.getElementById('errorMessage');
     const loadingAlert = document.getElementById('loadingAlert');
@@ -377,17 +376,11 @@ document.addEventListener('DOMContentLoaded', function() {
     function displaySingleChunk(chunkInfo) {
         console.log("Displaying chunk:", chunkInfo);
         
-        // Update audio player and download link
+        // Update audio player
         audioPlayer.src = chunkInfo.audio_url;
-        downloadBtn.href = '/download/' + chunkInfo.filename;
         
-        // Display translation if available
-        if (chunkInfo.translated_text && isChinese) {
-            translationDiv.textContent = chunkInfo.translated_text;
-            translationDiv.style.display = 'block';
-        } else {
-            translationDiv.style.display = 'none';
-        }
+        // Always keep translation hidden, regardless of whether translation is available
+        translationDiv.style.display = 'none';
         
         // Automatically play the audio
         audioPlayer.play().catch(e => {
@@ -449,7 +442,6 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Reset audio
         audioPlayer.src = '';
-        downloadBtn.href = '#';
         
         // Reset processing state
         processingComplete = false;

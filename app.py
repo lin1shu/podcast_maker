@@ -359,8 +359,9 @@ def process_single_chunk(text, voice, tone, is_chinese):
     # Get tone instructions
     instructions = TONE_INSTRUCTIONS.get(tone, TONE_INSTRUCTIONS["neutral"])
     
-    # Generate a unique filename
-    filename = f"chunk_{uuid.uuid4()}.mp3"
+    # Generate a unique filename using UUID
+    file_uuid = uuid.uuid4()
+    filename = f"chunk_{file_uuid}.mp3"
     filepath = os.path.join('audio', filename)
     
     logger.info(f"Generating speech with voice={voice}, saving to {filepath}")
@@ -379,12 +380,27 @@ def process_single_chunk(text, voice, tone, is_chinese):
     
     logger.info(f"Speech generation complete, saved to {filepath}")
     
+    # Save both English and Chinese text to JSON file with the same UUID
+    json_data = {
+        'original_text': original_text,
+        'translated_text': translated_text
+    }
+    
+    json_filename = f"chunk_{file_uuid}.json"
+    json_filepath = os.path.join('audio', json_filename)
+    
+    with open(json_filepath, 'w', encoding='utf-8') as f:
+        json.dump(json_data, f, ensure_ascii=False, indent=2)
+    
+    logger.info(f"Text data saved to JSON file: {json_filepath}")
+    
     # Return information about the processed chunk
     return {
         'original_text': original_text,
         'translated_text': translated_text,
         'audio_url': f'/audio/{filename}',
-        'filename': filename
+        'filename': filename,
+        'json_filename': json_filename
     }
 
 @app.route('/get_all_processed_chunks', methods=['GET'])
@@ -412,6 +428,19 @@ def serve_audio(filename):
     response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Range')
     response.headers.add('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS')
     response.headers.add('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Content-Type')
+    response.headers.add('Cache-Control', 'no-cache')
+    
+    return response
+
+@app.route('/text/<filename>')
+def serve_text_json(filename):
+    logger.info(f"Serving text JSON file: {filename}")
+    response = send_from_directory('audio', filename)
+    
+    # Add additional CORS headers
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+    response.headers.add('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS')
     response.headers.add('Cache-Control', 'no-cache')
     
     return response
