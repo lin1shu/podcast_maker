@@ -7,8 +7,16 @@
 </head>
 <body>
   <div class="container">
-    <h1>Podcast Maker</h1>
+    <div class="header">
+      <h1>Podcast Maker</h1>
+      <button id="settings-toggle" class="icon-button" title="Toggle Settings">⚙️</button>
+    </div>
     <p>Convert selected text to podcast audio with optional Chinese translation</p>
+    
+    <!-- Current settings indicator -->
+    <div id="current-settings" class="current-settings">
+      Voice: <span id="current-voice">Nova</span> | Tone: <span id="current-tone">Friendly</span>
+    </div>
     
     <!-- Text area for input - hidden from UI but kept for functionality -->
     <div class="form-group" style="display: none;">
@@ -17,31 +25,35 @@
       <div class="word-count">Words: <span id="word-count">0</span></div>
     </div>
     
-    <div class="form-group">
-      <label for="voice">Select Voice:</label>
-      <select id="voice" class="form-control">
-        <option value="alloy">Alloy</option>
-        <option value="echo">Echo</option>
-        <option value="fable">Fable</option>
-        <option value="onyx">Onyx</option>
-        <option value="nova" selected>Nova</option>
-        <option value="shimmer">Shimmer</option>
-      </select>
-    </div>
-    
-    <div class="form-group">
-      <label for="tone">Select Tone:</label>
-      <select id="tone" class="form-control">
-        <option value="neutral">Neutral</option>
-        <option value="warm">Warm</option>
-        <option value="professional">Professional</option>
-        <option value="enthusiastic">Enthusiastic</option>
-        <option value="calm">Calm</option>
-        <option value="formal">Formal</option>
-        <option value="informal">Informal</option>
-        <option value="serious">Serious</option>
-        <option value="friendly" selected>Friendly</option>
-      </select>
+    <!-- Settings panel - hidden by default -->
+    <div id="settings-panel" style="display: none;">
+      <h3>Voice Settings</h3>
+      <div class="form-group">
+        <label for="voice">Select Voice:</label>
+        <select id="voice" class="form-control">
+          <option value="alloy">Alloy</option>
+          <option value="echo">Echo</option>
+          <option value="fable">Fable</option>
+          <option value="onyx">Onyx</option>
+          <option value="nova" selected>Nova</option>
+          <option value="shimmer">Shimmer</option>
+        </select>
+      </div>
+      
+      <div class="form-group">
+        <label for="tone">Select Tone:</label>
+        <select id="tone" class="form-control">
+          <option value="neutral">Neutral</option>
+          <option value="warm">Warm</option>
+          <option value="professional">Professional</option>
+          <option value="enthusiastic">Enthusiastic</option>
+          <option value="calm">Calm</option>
+          <option value="formal">Formal</option>
+          <option value="informal">Informal</option>
+          <option value="serious">Serious</option>
+          <option value="friendly" selected>Friendly</option>
+        </select>
+      </div>
     </div>
     
     <div class="form-group checkbox">

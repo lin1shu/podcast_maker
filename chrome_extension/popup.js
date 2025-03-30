@@ -2,6 +2,7 @@
 let textArea, generateBtn, audioPlayer, downloadLink, wordCountSpan, statusDiv;
 let translationArea, translateBtn, voiceSelect, toneSelect, chineseCheckbox;
 let audioContainer, translationContainer;
+let settingsToggle, settingsPanel, currentSettings, currentVoice, currentTone;
 
 // Wait for the DOM to be fully loaded
 document.addEventListener('DOMContentLoaded', function() {
@@ -73,6 +74,21 @@ function initializeElements() {
   chineseCheckbox = document.getElementById('chinese');
   console.log('chinese element:', chineseCheckbox);
   
+  settingsToggle = document.getElementById('settings-toggle');
+  console.log('settings-toggle element:', settingsToggle);
+  
+  settingsPanel = document.getElementById('settings-panel');
+  console.log('settings-panel element:', settingsPanel);
+  
+  currentSettings = document.getElementById('current-settings');
+  console.log('current-settings element:', currentSettings);
+  
+  currentVoice = document.getElementById('current-voice');
+  console.log('current-voice element:', currentVoice);
+  
+  currentTone = document.getElementById('current-tone');
+  console.log('current-tone element:', currentTone);
+  
   // Add audio player container to the DOM if needed
   if (!document.getElementById('audio-container')) {
     audioContainer = document.createElement('div');
@@ -106,22 +122,45 @@ function loadStoredSettings() {
   chrome.storage.sync.get({
     voice: 'nova', 
     tone: 'friendly', 
-    chinese: false 
+    chinese: false,
+    showSettings: false // Default to hiding settings
   }, function(items) {
     if (items.voice) {
       voiceSelect.value = items.voice;
+      // Update the current voice display
+      updateCurrentSettingsDisplay();
     }
     
     if (items.tone) {
       toneSelect.value = items.tone;
+      // Update the current tone display
+      updateCurrentSettingsDisplay();
     }
     
     if (items.chinese !== undefined) {
       chineseCheckbox.checked = items.chinese;
     }
     
+    // Apply settings visibility preference
+    if (items.showSettings !== undefined) {
+      settingsPanel.style.display = items.showSettings ? 'block' : 'none';
+    }
+    
     console.log('Loaded stored settings:', items);
   });
+}
+
+// Update the current settings display
+function updateCurrentSettingsDisplay() {
+  // Get the selected voice and tone text
+  const voiceText = voiceSelect.options[voiceSelect.selectedIndex].text;
+  const toneText = toneSelect.options[toneSelect.selectedIndex].text;
+  
+  // Update the display
+  currentVoice.textContent = voiceText;
+  currentTone.textContent = toneText;
+  
+  console.log('Updated current settings display:', voiceText, toneText);
 }
 
 // Setup event listeners
@@ -136,12 +175,42 @@ function setupEventListeners() {
   
   translateBtn.addEventListener('click', handleTranslateClick);
   
+  // Settings toggle button
+  settingsToggle.addEventListener('click', toggleSettings);
+  
+  // Make current settings display clickable to open settings
+  currentSettings.addEventListener('click', function() {
+    if (settingsPanel.style.display !== 'block') {
+      toggleSettings();
+    }
+  });
+  
   // Save settings when changed
-  voiceSelect.addEventListener('change', saveSettings);
-  toneSelect.addEventListener('change', saveSettings);
+  voiceSelect.addEventListener('change', function() {
+    updateCurrentSettingsDisplay();
+    saveSettings();
+  });
+  
+  toneSelect.addEventListener('change', function() {
+    updateCurrentSettingsDisplay();
+    saveSettings();
+  });
+  
   chineseCheckbox.addEventListener('change', saveSettings);
   
   console.log('Event listeners set up');
+}
+
+// Toggle settings panel visibility
+function toggleSettings() {
+  console.log('Settings toggle clicked');
+  const currentVisibility = settingsPanel.style.display === 'block';
+  settingsPanel.style.display = currentVisibility ? 'none' : 'block';
+  
+  // Save the settings visibility preference
+  chrome.storage.sync.set({ showSettings: !currentVisibility }, function() {
+    console.log('Saved settings visibility preference:', !currentVisibility);
+  });
 }
 
 // Save settings when changed
@@ -149,8 +218,12 @@ function saveSettings() {
   const settings = {
     voice: voiceSelect.value,
     tone: toneSelect.value,
-    chinese: chineseCheckbox.checked
+    chinese: chineseCheckbox.checked,
+    showSettings: settingsPanel.style.display === 'block'
   };
+  
+  // Make sure current settings display is updated
+  updateCurrentSettingsDisplay();
   
   chrome.storage.sync.set(settings, function() {
     console.log('Settings saved:', settings);
