@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Podcast Maker</title>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Podcast Maker</h1>
+    <p>Convert selected text to podcast audio with optional Chinese translation</p>
+    
+    <!-- Text area for input -->
+    <div class="form-group">
+      <label for="text-input">Text to convert:</label>
+      <textarea id="text-input" class="form-control" rows="5" placeholder="Selected text will appear here, or type directly..."></textarea>
+      <div class="word-count">Words: <span id="word-count">0</span></div>
+    </div>
+    
+    <div class="form-group">
+      <label for="voice">Select Voice:</label>
+      <select id="voice" class="form-control">
+        <option value="alloy">Alloy</option>
+        <option value="echo">Echo</option>
+        <option value="fable">Fable</option>
+        <option value="onyx">Onyx</option>
+        <option value="nova">Nova</option>
+        <option value="shimmer">Shimmer</option>
+      </select>
+    </div>
+    
+    <div class="form-group">
+      <label for="tone">Select Tone:</label>
+      <select id="tone" class="form-control">
+        <option value="neutral">Neutral</option>
+        <option value="warm">Warm</option>
+        <option value="professional">Professional</option>
+        <option value="enthusiastic">Enthusiastic</option>
+        <option value="calm">Calm</option>
+        <option value="formal">Formal</option>
+        <option value="informal">Informal</option>
+        <option value="serious">Serious</option>
+        <option value="friendly">Friendly</option>
+      </select>
+    </div>
+    
+    <div class="form-group checkbox">
+      <input type="checkbox" id="chinese" class="form-check-input">
+      <label for="chinese" class="form-check-label">Translate to Chinese</label>
+    </div>
+    
+    <button id="convert-btn" class="btn btn-primary">Convert to Audio</button>
+    <div id="status-message" class="status-message"></div>
+    
+    <!-- Translation area -->
+    <div id="translation-area" style="display: none;">
+      <button id="translate-btn" class="btn btn-secondary">Translate Only</button>
+    </div>
+    
+    <!-- Audio will be displayed here -->
+    <div id="audio-container" style="display: none;"></div>
+    
+    <!-- Translation will be displayed here -->
+    <div id="translation-container" style="display: none;"></div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html> 

@@ -1,3 +1,4 @@
+import sys
 from flask import Flask, render_template, request, jsonify, send_file, send_from_directory, Response, session
 import os
 import json
@@ -9,13 +10,34 @@ import tempfile
 import re
 import pydub
 import tiktoken
+import logging
+from flask_cors import CORS
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG, 
+                   format='[%(asctime)s] [%(levelname)s] %(message)s',
+                   datefmt='%Y-%m-%d %H:%M:%S',
+                   handlers=[
+                       logging.StreamHandler(sys.stdout),
+                       logging.FileHandler('app.log')
+                   ])
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+CORS(app, resources={r"/*": {"origins": "*"}})
 # Use a fixed secret key for session management
 app.secret_key = "podcast_maker_secret_key_fixed"
 # Set session to be permanent and last for 1 hour
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=1)
 app.config['SESSION_TYPE'] = 'filesystem'
+
+# Add CORS support
+@app.after_request
+def after_request(response):
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    return response
 
 # Load configuration
 def load_config():
@@ -186,6 +208,21 @@ def process_chunk():
     This handles both initial setup and processing of each chunk
     """
     try:
+        # Log the incoming request with more details
+        logger.info("==================== /process_chunk REQUEST RECEIVED ====================")
+        logger.info(f"Request method: {request.method}")
+        logger.info(f"Content-Type: {request.headers.get('Content-Type')}")
+        logger.info(f"User-Agent: {request.headers.get('User-Agent')}")
+        logger.info(f"Origin: {request.headers.get('Origin')}")
+        
+        # Log complete request data
+        if request.is_json:
+            request_data = request.get_json()
+            logger.info(f"JSON request data: {json.dumps(request_data, indent=2)}")
+        else:
+            logger.info(f"Form data: {request.form}")
+            logger.info(f"Args: {request.args}")
+        
         # Make session permanent
         session.permanent = True
         
@@ -198,6 +235,9 @@ def process_chunk():
             voice = request_data.get('voice', 'alloy')
             tone = request_data.get('tone', 'neutral')
             is_chinese = request_data.get('is_chinese', False)
+            
+            logger.info(f"Processing first chunk with voice={voice}, tone={tone}, chinese={is_chinese}")
+            logger.debug(f"Text length: {len(text)} characters")
             
             # Chunk the text
             text_chunks = chunk_text(text)
@@ -213,10 +253,11 @@ def process_chunk():
             session['is_chinese'] = is_chinese
             session['processed_chunks'] = []
             
-            print(f"Created new session: {session_id} with {len(text_chunks)} chunks")
+            logger.info(f"Created new session: {session_id} with {len(text_chunks)} chunks")
             
             # If there's only one chunk, process it immediately
             if len(text_chunks) == 1:
+                logger.info("Processing single chunk immediately")
                 chunk_info = process_single_chunk(text_chunks[0], voice, tone, is_chinese)
                 return jsonify({
                     'is_chunked': False,
@@ -226,6 +267,7 @@ def process_chunk():
                 })
             
             # Otherwise, return info about chunking
+            logger.info(f"Returning chunking info for {len(text_chunks)} chunks")
             return jsonify({
                 'is_chunked': True,
                 'total_chunks': len(text_chunks),
@@ -234,6 +276,8 @@ def process_chunk():
         
         # If it's not the first chunk, process the next chunk
         else:
+            logger.info("Processing subsequent chunk")
+            
             # Get session data
             chunks = session.get('chunks', [])
             voice = session.get('voice')
@@ -244,10 +288,12 @@ def process_chunk():
             processed_chunks = session.get('processed_chunks', [])
             
             # Debug logging
-            print(f"Processing chunk {current_chunk_index+1}/{total_chunks}")
+            logger.info(f"Processing chunk {current_chunk_index+1}/{total_chunks}")
+            logger.debug(f"Session data: voice={voice}, tone={tone}, is_chinese={is_chinese}")
             
             # Check if session data exists
             if not chunks or current_chunk_index >= total_chunks:
+                logger.error("No more chunks to process or session expired")
                 return jsonify({'error': 'No more chunks to process or session expired'})
             
             # Get the current chunk
@@ -264,6 +310,7 @@ def process_chunk():
             session['current_chunk'] = current_chunk_index + 1
             
             # Return chunk info
+            logger.info(f"Completed chunk {current_chunk_index+1}/{total_chunks}")
             return jsonify({
                 'current_chunk': current_chunk_index + 1,
                 'total_chunks': total_chunks,
@@ -273,8 +320,8 @@ def process_chunk():
     
     except Exception as e:
         import traceback
-        print(f"Error in process_chunk: {str(e)}")
-        print(traceback.format_exc())
+        logger.error(f"Error in process_chunk: {str(e)}")
+        logger.error(traceback.format_exc())
         return jsonify({'error': f"Error: {str(e)}"})
 
 def process_single_chunk(text, voice, tone, is_chinese):
@@ -283,8 +330,12 @@ def process_single_chunk(text, voice, tone, is_chinese):
     original_text = text
     translated_text = None
     
+    logger.info(f"Processing single chunk: voice={voice}, tone={tone}, is_chinese={is_chinese}")
+    logger.debug(f"Text length: {len(text)} characters")
+    
     # If Chinese translation is requested
     if is_chinese:
+        logger.info("Translating text to Chinese")
         # Translate text to Chinese
         translation_response = client.chat.completions.create(
             model="gpt-4o",
@@ -296,6 +347,8 @@ def process_single_chunk(text, voice, tone, is_chinese):
         )
         
         translated_text = translation_response.choices[0].message.content
+        logger.info("Translation complete")
+        logger.debug(f"Translated text length: {len(translated_text)} characters")
         
         # Use translated text for speech
         speech_text = translated_text
@@ -310,6 +363,8 @@ def process_single_chunk(text, voice, tone, is_chinese):
     filename = f"chunk_{uuid.uuid4()}.mp3"
     filepath = os.path.join('audio', filename)
     
+    logger.info(f"Generating speech with voice={voice}, saving to {filepath}")
+    
     # Create speech
     response = client.audio.speech.create(
         model="gpt-4o-mini-tts",
@@ -322,6 +377,8 @@ def process_single_chunk(text, voice, tone, is_chinese):
     with open(filepath, 'wb') as f:
         response.stream_to_file(filepath)
     
+    logger.info(f"Speech generation complete, saved to {filepath}")
+    
     # Return information about the processed chunk
     return {
         'original_text': original_text,
@@ -333,10 +390,12 @@ def process_single_chunk(text, voice, tone, is_chinese):
 @app.route('/get_all_processed_chunks', methods=['GET'])
 def get_all_processed_chunks():
     """Get all processed chunks in the current session"""
+    logger.info("Received request for all processed chunks")
     processed_chunks = session.get('processed_chunks', [])
     total_chunks = session.get('total_chunks', 0)
     current_chunk = session.get('current_chunk', 0)
     
+    logger.info(f"Returning {len(processed_chunks)} processed chunks, total={total_chunks}, current={current_chunk}")
     return jsonify({
         'processed_chunks': processed_chunks,
         'total_chunks': total_chunks,
@@ -345,7 +404,17 @@ def get_all_processed_chunks():
 
 @app.route('/audio/<filename>')
 def serve_audio(filename):
-    return send_from_directory('audio', filename)
+    logger.info(f"Serving audio file: {filename}")
+    response = send_from_directory('audio', filename)
+    
+    # Add additional CORS headers specifically for audio files
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Range')
+    response.headers.add('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS')
+    response.headers.add('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Content-Type')
+    response.headers.add('Cache-Control', 'no-cache')
+    
+    return response
 
 @app.route('/download/<filename>')
 def download_file(filename):
@@ -502,14 +571,22 @@ def get_next_text_chunk():
 def translate_text():
     """Translate a piece of text to Chinese without affecting session state"""
     try:
+        # Log the incoming request with more details
+        logger.info("==================== /translate_text REQUEST RECEIVED ====================")
+        logger.info(f"Request method: {request.method}")
+        logger.info(f"Content-Type: {request.headers.get('Content-Type')}")
+        logger.info(f"User-Agent: {request.headers.get('User-Agent')}")
+        logger.info(f"Origin: {request.headers.get('Origin')}")
+        
         # Get the text to translate
         request_data = request.get_json() if request.is_json else {}
         text = request_data.get('text', '')
         
         if not text:
+            logger.error("No text provided for translation")
             return jsonify({'error': 'No text provided for translation'})
         
-        print(f"Translating text to Chinese: {text[:100]}...")
+        logger.info(f"Translating text to Chinese: {text[:100]}...")
         
         # Translate the text
         translation_response = client.chat.completions.create(
@@ -522,7 +599,7 @@ def translate_text():
         )
         
         translated_text = translation_response.choices[0].message.content
-        print(f"Translation successful, result: {translated_text[:100]}...")
+        logger.info("Translation successful, result: {translated_text[:100]}...")
         
         return jsonify({
             'translated_text': translated_text
@@ -533,5 +610,32 @@ def translate_text():
         traceback.print_exc()
         return jsonify({'error': f'An error occurred during translation: {str(e)}'})
 
+@app.route('/test_connection', methods=['GET', 'OPTIONS'])
+def test_connection():
+    """Simple endpoint to test if the server is running and accessible from the extension"""
+    logger.info("==================== /test_connection REQUEST RECEIVED ====================")
+    logger.info(f"Request method: {request.method}")
+    logger.info(f"Content-Type: {request.headers.get('Content-Type')}")
+    logger.info(f"User-Agent: {request.headers.get('User-Agent')}")
+    logger.info(f"Origin: {request.headers.get('Origin')}")
+    
+    if request.method == 'OPTIONS':
+        return _build_cors_preflight_response()
+    
+    logger.info("Sending successful test_connection response")
+    return jsonify({
+        'status': 'success',
+        'message': 'Connection to Podcast Maker server established successfully!',
+        'timestamp': datetime.now().isoformat()
+    })
+
+def _build_cors_preflight_response():
+    response = jsonify({})
+    response.headers.add("Access-Control-Allow-Origin", "*")
+    response.headers.add("Access-Control-Allow-Headers", "Content-Type,Authorization")
+    response.headers.add("Access-Control-Allow-Methods", "GET,PUT,POST,DELETE,OPTIONS")
+    return response
+
 if __name__ == '__main__':
+    logger.info("Starting Podcast Maker server on port 9092")
     app.run(host='0.0.0.0', port=9092, debug=True) 

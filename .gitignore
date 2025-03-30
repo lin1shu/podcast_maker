@@ -72,4 +72,8 @@ config.json
 # Generated audio files
 static/audio/*.mp3
 audio/*.mp3
-*.mp3 
+*.mp3
+
+# Log files
+app.log
+*.log 

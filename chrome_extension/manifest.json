@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Podcast Maker",
+  "version": "1.0",
+  "description": "Create podcasts from selected text",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": [
+    "http://192.168.4.106:9092/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "images/icon16.png",
+      "48": "images/icon48.png",
+      "128": "images/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "images/icon16.png",
+    "48": "images/icon48.png",
+    "128": "images/icon128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"]
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; media-src 'self' blob: http://192.168.4.106:9092; connect-src http://192.168.4.106:9092 http://192.168.4.106:9092/* ws://192.168.4.106:9092/* 'self';"
+  }
+} 
