@@ -4,6 +4,10 @@ let translationArea, translateBtn, voiceSelect, toneSelect, chineseCheckbox;
 let audioContainer, translationContainer;
 let settingsToggle, settingsPanel, currentSettings, currentVoice, currentTone;
 
+// Global variable to track audio processing state
+let isProcessingAudio = false;
+let currentAudioElement = null;
+
 // Wait for the DOM to be fully loaded
 document.addEventListener('DOMContentLoaded', function() {
   console.log('Popup initialized - DEBUG MODE');
@@ -345,6 +349,14 @@ function checkForTranslation() {
 // Handle translate button click
 function handleTranslateClick() {
   console.log('Translate button clicked - starting translation process');
+  
+  // Don't interfere with ongoing audio generation
+  if (isProcessingAudio) {
+    console.log('Audio processing in progress, translation might interfere');
+    showError('Please wait for current audio processing to complete');
+    return;
+  }
+  
   const text = textArea.value.trim();
   
   if (!text) {
@@ -356,6 +368,9 @@ function handleTranslateClick() {
   statusDiv.textContent = 'Translating...';
   statusDiv.className = 'status-message';
   statusDiv.style.display = 'block';
+  
+  // We're not going to stop audio here, as translation doesn't need to interrupt
+  // audio playback, but we will make sure no new audio starts
   
   // Clear any existing translation
   translationContainer.innerHTML = '';
@@ -371,12 +386,21 @@ function handleTranslateClick() {
 function handleGenerateClick() {
   console.log('Generate button clicked - VERBOSE DEBUG');
   
+  // Prevent multiple simultaneous audio processing
+  if (isProcessingAudio) {
+    console.log('Already processing audio, ignoring new request');
+    return;
+  }
+  
+  isProcessingAudio = true;
+  
   try {
     const text = textArea.value.trim();
     
     if (!text) {
       console.log('No text entered, showing error');
       showError('Please enter or select some text first.');
+      isProcessingAudio = false;
       return;
     }
     
@@ -388,6 +412,7 @@ function handleGenerateClick() {
     statusDiv.style.display = 'block';
     
     // Clear existing audio and translation
+    stopAllAudio();
     audioContainer.style.display = 'none';
     audioContainer.innerHTML = '';
     translationContainer.style.display = 'none';
@@ -430,6 +455,7 @@ function handleGenerateClick() {
           if (data.error) {
             console.error('Server returned error:', data.error);
             showError('Error: ' + data.error);
+            isProcessingAudio = false;
             return;
           }
           
@@ -437,6 +463,7 @@ function handleGenerateClick() {
           if (data.is_chunked) {
             console.log('Chunked response detected, chunks:', data.total_chunks);
             // Just log it without showing a success message
+            isProcessingAudio = false;
             return;
           }
           
@@ -455,30 +482,36 @@ function handleGenerateClick() {
             showAudioPlayer(fullAudioUrl, filename);
             // Hide the status message when audio is ready
             statusDiv.style.display = 'none';
-          }
-          
-          // If Chinese translation was requested and available, show it
-          if (requestData.is_chinese && data.chunk_info && data.chunk_info.translated_text) {
-            showTranslation(data.chunk_info.original_text, data.chunk_info.translated_text);
+            
+            // If Chinese translation was requested and available, show it
+            if (requestData.is_chinese && data.chunk_info && data.chunk_info.translated_text) {
+              showTranslation(data.chunk_info.original_text, data.chunk_info.translated_text);
+            }
+          } else {
+            isProcessingAudio = false;
           }
         } catch (parseError) {
           console.error('Error parsing JSON response:', parseError);
           showError('Error parsing server response. Check console for details.');
+          isProcessingAudio = false;
         }
       } else {
         console.error('Server returned error status:', xhr.status);
         showError(`Server error: ${xhr.status} ${xhr.statusText}`);
+        isProcessingAudio = false;
       }
     };
     
     xhr.ontimeout = function() {
       console.error('Request timed out');
       showError('Request timed out. The server might be busy or not responding.');
+      isProcessingAudio = false;
     };
     
     xhr.onerror = function(e) {
       console.error('XHR request error:', e);
       showError('Network error. Make sure the server is running at http://192.168.4.106:9092');
+      isProcessingAudio = false;
     };
     
     console.log('Sending process_chunk request...');
@@ -488,6 +521,7 @@ function handleGenerateClick() {
     console.error('Exception in handleGenerateClick:', e);
     console.error('Stack trace:', e.stack);
     showError('Error: ' + e.message);
+    isProcessingAudio = false;
   }
 }
 
@@ -594,13 +628,8 @@ function getTranslation(text) {
 function showAudioPlayer(audioUrl, filename) {
   console.log('Creating audio player for URL:', audioUrl);
   
-  // Stop any currently playing audio
-  const existingAudio = document.querySelector('audio');
-  if (existingAudio) {
-    console.log('Stopping existing audio playback');
-    existingAudio.pause();
-    existingAudio.currentTime = 0;
-  }
+  // Stop all currently playing audio
+  stopAllAudio();
   
   // Clear previous content
   audioContainer.innerHTML = '';
@@ -619,11 +648,46 @@ function showAudioPlayer(audioUrl, filename) {
   audioContainer.style.display = 'block';
   
   // Get the newly created audio element and play it programmatically
-  // instead of using the autoplay attribute
   const audioElement = document.getElementById('audio-element');
   if (audioElement) {
+    // Track the current audio element
+    currentAudioElement = audioElement;
+    
+    // Listen for when playback ends to reset our tracking
+    audioElement.addEventListener('ended', function() {
+      console.log('Audio playback ended naturally');
+      currentAudioElement = null;
+      isProcessingAudio = false;
+    });
+    
+    // Start playback
     audioElement.play().catch(e => {
       console.error('Error playing audio:', e);
+      currentAudioElement = null;
+      isProcessingAudio = false;
+    });
+  }
+}
+
+// Function to stop all audio playback
+function stopAllAudio() {
+  console.log('Stopping all audio playback');
+  
+  // Stop the tracked current audio element if it exists
+  if (currentAudioElement) {
+    console.log('Stopping tracked audio element');
+    currentAudioElement.pause();
+    currentAudioElement.currentTime = 0;
+    currentAudioElement = null;
+  }
+  
+  // Also find and stop any other audio elements that might exist
+  const allAudioElements = document.querySelectorAll('audio');
+  if (allAudioElements.length > 0) {
+    console.log(`Found ${allAudioElements.length} audio elements to stop`);
+    allAudioElements.forEach(audio => {
+      audio.pause();
+      audio.currentTime = 0;
     });
   }
 }
