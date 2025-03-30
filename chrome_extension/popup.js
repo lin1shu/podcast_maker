@@ -103,7 +103,11 @@ function initializeElements() {
 
 // Set default values from stored settings
 function loadStoredSettings() {
-  chrome.storage.sync.get(['voice', 'tone', 'chinese'], function(items) {
+  chrome.storage.sync.get({
+    voice: 'nova', 
+    tone: 'friendly', 
+    chinese: false 
+  }, function(items) {
     if (items.voice) {
       voiceSelect.value = items.voice;
     }

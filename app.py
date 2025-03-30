@@ -232,8 +232,8 @@ def process_chunk():
         # If it's the first chunk, we need to initialize the session
         if request_data.get('is_first_chunk', False):
             text = request_data.get('text', '')
-            voice = request_data.get('voice', 'alloy')
-            tone = request_data.get('tone', 'neutral')
+            voice = request_data.get('voice', 'nova')
+            tone = request_data.get('tone', 'friendly')
             is_chinese = request_data.get('is_chinese', False)
             
             logger.info(f"Processing first chunk with voice={voice}, tone={tone}, chinese={is_chinese}")
