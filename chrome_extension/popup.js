@@ -19,11 +19,272 @@ document.addEventListener('DOMContentLoaded', function() {
   // Test server connection
   testServerConnection();
   
-  // Try to get selected text
-  getSelectedText();
+  // First, check for text from the simplified context menu selection
+  chrome.storage.local.get('contextMenuSelection', function(data) {
+    console.log('Checking for contextMenuSelection in storage, found:', data);
+    
+    try {
+      if (data.contextMenuSelection) {
+        const selection = data.contextMenuSelection;
+        
+        // Only use if the results are from the last minute (60000 ms)
+        const isRecent = (Date.now() - selection.timestamp) < 60000;
+        console.log('Selection timestamp:', selection.timestamp, 'Current time:', Date.now(), 'Is recent:', isRecent);
+        
+        if (isRecent && selection.text) {
+          console.log('Found recent context menu selection:', selection);
+          
+          try {
+            // Set the text in the text area
+            textArea.value = selection.text;
+            
+            // Update word count
+            updateWordCount(selection.text);
+            
+            // Store the tab ID for future reference
+            const tabId = selection.tabId;
+            console.log('Stored tab ID for replacement:', tabId);
+            
+            // Clear the stored selection so it's only used once
+            chrome.storage.local.remove('contextMenuSelection', function() {
+              console.log('contextMenuSelection removed from storage');
+            });
+            
+            // Show a success message
+            showSuccess('Text loaded from right-click menu');
+            
+            // Wait a short moment before starting translation
+            setTimeout(() => {
+              console.log('Starting automatic translation process');
+              // Automatically trigger the translation and audio generation
+              // This will trigger text replacement on the page too
+              handleTranslateClick();
+            }, 500);
+            
+            return; // Skip checking for other selections since we have results
+          } catch (processError) {
+            console.error('Error processing context menu selection:', processError);
+            showError('Error processing selection: ' + processError.message);
+          }
+        } else {
+          // Clear old selection
+          chrome.storage.local.remove('contextMenuSelection', function() {
+            console.log('Old contextMenuSelection removed from storage');
+          });
+        }
+      }
+    } catch (storageError) {
+      console.error('Error accessing context menu selection from storage:', storageError);
+      showError('Storage error: ' + storageError.message);
+    }
+    
+    // If no context menu selection, check for other stored results
+    chrome.storage.local.get('contextMenuResults', function(data) {
+      if (data.contextMenuResults) {
+        const results = data.contextMenuResults;
+        
+        // Only use if the results are from the last 10 minutes (600000 ms)
+        const isRecent = (Date.now() - results.timestamp) < 600000;
+        
+        if (isRecent) {
+          console.log('Found recent context menu results:', results);
+          
+          // Set the original text in the text area
+          if (results.originalText) {
+            textArea.value = results.originalText;
+            updateWordCount(results.originalText);
+          }
+          
+          // Display translation if available
+          if (results.translatedText) {
+            showTranslation(results.originalText, results.translatedText);
+          }
+          
+          // Display audio player if available
+          if (results.audioUrl) {
+            showAudioPlayer(results.audioUrl, results.filename);
+            statusDiv.style.display = 'none';
+          }
+          
+          // Replace text on the page if translated text is available
+          if (results.translatedText && results.tabId) {
+            console.log('Replacing text in tab ID:', results.tabId);
+            
+            // Use the stored tab ID for direct replacement
+            chrome.scripting.executeScript({
+              target: {tabId: results.tabId},
+              func: function(translatedText) {
+                console.log('Content script replacing text with:', translatedText);
+                
+                // First, check if we have a highlighted selection from our extension
+                const highlightedElement = document.querySelector('.voicetext-pro-selection');
+                const selection = window.getSelection();
+                
+                // Store information about the selection
+                const selectionInfo = {
+                  success: false,
+                  text: selection.toString().trim()
+                };
+                
+                try {
+                  // Case 1: We have our highlighted span from the extension
+                  if (highlightedElement) {
+                    console.log('Found highlighted element from extension');
+                    
+                    // Replace the content of the highlighted span
+                    highlightedElement.textContent = translatedText;
+                    
+                    // Remove the highlighting but keep the text
+                    const parent = highlightedElement.parentNode;
+                    if (parent) {
+                      parent.replaceChild(document.createTextNode(translatedText), highlightedElement);
+                    }
+                    
+                    selectionInfo.success = true;
+                    return selectionInfo;
+                  }
+                  
+                  // Case 2: We still have a valid selection
+                  if (selection && selection.rangeCount > 0 && selectionInfo.text) {
+                    console.log('Using current selection');
+                    
+                    try {
+                      // First try highlighting the selection to make it easier to track
+                      let range = selection.getRangeAt(0);
+                      const span = document.createElement('span');
+                      span.className = 'voicetext-pro-selection';
+                      span.style.backgroundColor = 'rgba(255, 255, 0, 0.3)';
+                      
+                      // Extract contents and add to span
+                      span.appendChild(range.extractContents());
+                      range.insertNode(span);
+                      
+                      // Now replace the content immediately
+                      span.textContent = translatedText;
+                      
+                      // Remove the highlighting but keep the text
+                      const parent = span.parentNode;
+                      if (parent) {
+                        parent.replaceChild(document.createTextNode(translatedText), span);
+                      }
+                      
+                      selectionInfo.success = true;
+                      selectionInfo.method = 'highlight_then_replace';
+                      return selectionInfo;
+                    } catch (innerError) {
+                      console.error('Error during highlight attempt:', innerError);
+                      
+                      // Fallback to direct replacement
+                      try {
+                        // Reset range in case it was modified
+                        const range = selection.getRangeAt(0);
+                        
+                        // Delete the selected content
+                        range.deleteContents();
+                        
+                        // Create a text node with the replacement text
+                        const replacementNode = document.createTextNode(translatedText);
+                        
+                        // Insert the replacement text
+                        range.insertNode(replacementNode);
+                        
+                        // Collapse the selection to after the inserted node
+                        selection.collapseToEnd();
+                        
+                        selectionInfo.success = true;
+                        selectionInfo.method = 'direct_replacement';
+                      } catch (fallbackError) {
+                        console.error('Error during fallback replacement:', fallbackError);
+                        selectionInfo.error = fallbackError.message;
+                        selectionInfo.method = 'fallback_failed';
+                      }
+                    }
+                  } else {
+                    selectionInfo.error = 'No valid text selection found';
+                    selectionInfo.method = 'no_selection';
+                  }
+                } catch (error) {
+                  console.error('Error replacing text:', error);
+                  selectionInfo.error = error.message;
+                  selectionInfo.method = 'exception';
+                }
+                
+                return selectionInfo;
+              },
+              args: [results.translatedText]
+            }, (execResults) => {
+              if (chrome.runtime.lastError) {
+                console.error('Error executing script:', chrome.runtime.lastError);
+                showError('Error: Could not replace text - ' + chrome.runtime.lastError.message);
+              } else {
+                console.log('Text replacement results:', execResults);
+                if (execResults && execResults[0] && execResults[0].result && execResults[0].result.success) {
+                  console.log('Text replacement successful');
+                  showSuccess('Text replaced with Chinese translation');
+                } else {
+                  console.error('Text replacement failed:', execResults?.[0]?.result?.error || 'Unknown error');
+                }
+              }
+            });
+          }
+          
+          // Clear the results so they're only used once
+          chrome.storage.local.remove('contextMenuResults');
+          
+          return; // Skip checking for selected text since we have results
+        } else {
+          // Clear old results
+          chrome.storage.local.remove('contextMenuResults');
+        }
+      }
+      
+      // If no context menu results, check for text from context menu
+      chrome.storage.local.get('selectedTextFromContextMenu', function(data) {
+        if (data.selectedTextFromContextMenu) {
+          console.log('Found text from context menu:', data.selectedTextFromContextMenu.substring(0, 30) + '...');
+          
+          // Set the text in the text area
+          textArea.value = data.selectedTextFromContextMenu;
+          
+          // Update word count
+          updateWordCount(data.selectedTextFromContextMenu);
+          
+          // Clear the stored text so it's only used once
+          chrome.storage.local.remove('selectedTextFromContextMenu');
+          
+          // Automatically trigger the conversion
+          handleGenerateClick();
+        } else {
+          // If no context menu text, get selected text from page as usual
+          getSelectedText();
+        }
+      });
+    });
+  });
   
   // Add event listeners
   setupEventListeners();
+  
+  // Listen for messages from background script
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.action === 'processSelectedText') {
+      console.log('Received text to process:', message.text);
+      // Set the text in the text area
+      textArea.value = message.text;
+      // Update word count
+      updateWordCount(message.text);
+      // Apply settings if provided
+      if (message.settings) {
+        voiceSelect.value = message.settings.voice;
+        toneSelect.value = message.settings.tone;
+        chineseCheckbox.checked = message.settings.chinese;
+        // Update the display
+        updateCurrentSettingsDisplay();
+      }
+      // Automatically trigger the conversion
+      handleGenerateClick();
+    }
+  });
   
   // DEBUG: Add direct console log for the button
   const convertButton = document.getElementById('convert-btn');
@@ -135,7 +396,7 @@ function loadStoredSettings() {
     tone: 'friendly', 
     chinese: true, // Always default to Chinese translation enabled
     showSettings: false // Default to hiding settings
-  }, function(items) {h
+  }, function(items) {
     if (items.voice) {
       voiceSelect.value = items.voice;
       // Update the current voice display
@@ -255,7 +516,7 @@ function getSelectedText() {
         // Use scripting API for more reliable text selection retrieval
         chrome.scripting.executeScript({
           target: {tabId: activeTab.id},
-          function: () => {
+          func: () => {
             const selection = window.getSelection();
             const text = selection.toString().trim();
             
@@ -389,6 +650,8 @@ function handleTranslateClick() {
     showError('Please enter or select some text first.');
     return;
   }
+  
+  console.log('Starting translation for text:', text.substring(0, 30) + '...');
   
   // Show processing message
   statusDiv.textContent = 'Translating...';
@@ -648,16 +911,19 @@ function getTranslation(text) {
           console.log('Translation displayed successfully');
           
           // First replace text on the page immediately
+          console.log('Immediately replacing text on the page with translation');
           replaceTextOnPage(data.translated_text);
           
-          // Then automatically trigger audio generation
+          // Then automatically trigger audio generation after a short delay
           setTimeout(() => {
             // Only generate audio if we're not already processing audio
             if (!isProcessingAudio && !currentAudioElement) {
               console.log('Automatically starting audio generation after translation');
               handleGenerateClick();
+            } else {
+              console.log('Skipping automatic audio generation - already processing audio');
             }
-          }, 500); // Short delay to ensure text replacement completes first
+          }, 1000); // Longer delay to ensure text replacement completes first
         } else {
           console.error('No translated text in response');
           showError('Translation error: No translated text received');
@@ -688,17 +954,117 @@ function getTranslation(text) {
 
 // Function to replace text on the page
 function replaceTextOnPage(translatedText) {
-  console.log('Automatically replacing text on page with translation:', translatedText.substring(0, 30) + '...');
+  console.log('Attempting to replace text on page with translation:', translatedText.substring(0, 30) + '...');
   
   // Get the active tab
   chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
     if (tabs && tabs.length > 0) {
       const activeTab = tabs[0];
+      console.log('Found active tab for replacement:', activeTab.id);
       
       // Use direct script injection for more reliable text replacement
       chrome.scripting.executeScript({
         target: {tabId: activeTab.id},
-        function: replaceSelectedTextInPage,
+        func: function(translatedText) {
+          console.log('Content script replacing text with:', translatedText.substring(0, 30) + '...');
+          
+          // First, check if we have a highlighted selection from our extension
+          const highlightedElement = document.querySelector('.voicetext-pro-selection');
+          const selection = window.getSelection();
+          
+          // Store information about the selection
+          const selectionInfo = {
+            success: false,
+            text: selection ? selection.toString().trim() : '',
+            method: ''
+          };
+          
+          try {
+            // Case 1: We have our highlighted span from the extension
+            if (highlightedElement) {
+              console.log('Found highlighted element from extension');
+              
+              // Replace the content of the highlighted span
+              highlightedElement.textContent = translatedText;
+              
+              // Remove the highlighting but keep the text
+              const parent = highlightedElement.parentNode;
+              if (parent) {
+                parent.replaceChild(document.createTextNode(translatedText), highlightedElement);
+              }
+              
+              selectionInfo.success = true;
+              selectionInfo.method = 'highlighted_element';
+              return selectionInfo;
+            }
+            
+            // Case 2: We still have a valid selection
+            if (selection && selection.rangeCount > 0 && selectionInfo.text) {
+              console.log('Using current selection');
+              
+              try {
+                // First try highlighting the selection to make it easier to track
+                let range = selection.getRangeAt(0);
+                const span = document.createElement('span');
+                span.className = 'voicetext-pro-selection';
+                span.style.backgroundColor = 'rgba(255, 255, 0, 0.3)';
+                
+                // Extract contents and add to span
+                span.appendChild(range.extractContents());
+                range.insertNode(span);
+                
+                // Now replace the content immediately
+                span.textContent = translatedText;
+                
+                // Remove the highlighting but keep the text
+                const parent = span.parentNode;
+                if (parent) {
+                  parent.replaceChild(document.createTextNode(translatedText), span);
+                }
+                
+                selectionInfo.success = true;
+                selectionInfo.method = 'highlight_then_replace';
+                return selectionInfo;
+              } catch (innerError) {
+                console.error('Error during highlight attempt:', innerError);
+                
+                // Fallback to direct replacement
+                try {
+                  // Reset range in case it was modified
+                  const range = selection.getRangeAt(0);
+                  
+                  // Delete the selected content
+                  range.deleteContents();
+                  
+                  // Create a text node with the replacement text
+                  const replacementNode = document.createTextNode(translatedText);
+                  
+                  // Insert the replacement text
+                  range.insertNode(replacementNode);
+                  
+                  // Collapse the selection to after the inserted node
+                  selection.collapseToEnd();
+                  
+                  selectionInfo.success = true;
+                  selectionInfo.method = 'direct_replacement';
+                } catch (fallbackError) {
+                  console.error('Error during fallback replacement:', fallbackError);
+                  selectionInfo.error = fallbackError.message;
+                  selectionInfo.method = 'fallback_failed';
+                }
+              }
+            } else {
+              selectionInfo.error = 'No valid text selection found';
+              selectionInfo.method = 'no_selection';
+            }
+          } catch (error) {
+            console.error('Error replacing text:', error);
+            selectionInfo.error = error.message;
+            selectionInfo.method = 'exception';
+          }
+          
+          return selectionInfo;
+        },
         args: [translatedText]
       }, (results) => {
         if (chrome.runtime.lastError) {
@@ -709,12 +1075,13 @@ function replaceTextOnPage(translatedText) {
         
         console.log('Script execution results:', results);
         if (results && results[0] && results[0].result && results[0].result.success) {
-          console.log('Text replacement successful');
+          console.log('Text replacement successful using method:', results[0].result.method);
           showSuccess('Text replaced with Chinese translation');
           // Do not close the popup, keep it open for audio playback
         } else {
           const errorMsg = results?.[0]?.result?.error || 'No text selected or selection lost. Please select text again.';
-          console.error('Text replacement failed:', errorMsg);
+          const method = results?.[0]?.result?.method || 'unknown';
+          console.error('Text replacement failed with method:', method, 'Error:', errorMsg);
           showError('Could not replace text: ' + errorMsg);
         }
       });
@@ -722,67 +1089,6 @@ function replaceTextOnPage(translatedText) {
       showError('No active tab found');
     }
   });
-}
-
-// Function to be injected into the page to replace selected text
-function replaceSelectedTextInPage(translatedText) {
-  console.log('Content script replacing text with:', translatedText.substring(0, 30) + '...');
-  
-  // First, check if we have a highlighted selection from our extension
-  const highlightedElement = document.querySelector('.voicetext-pro-selection');
-  const selection = window.getSelection();
-  
-  // Store information about the selection
-  const selectionInfo = {
-    success: false,
-    text: selection.toString().trim()
-  };
-  
-  try {
-    // Case 1: We have our highlighted span from the extension
-    if (highlightedElement) {
-      console.log('Found highlighted element from extension');
-      
-      // Replace the content of the highlighted span
-      highlightedElement.textContent = translatedText;
-      
-      // Remove the highlighting but keep the text
-      const parent = highlightedElement.parentNode;
-      if (parent) {
-        parent.replaceChild(document.createTextNode(translatedText), highlightedElement);
-      }
-      
-      selectionInfo.success = true;
-      return selectionInfo;
-    }
-    
-    // Case 2: We still have a valid selection
-    if (selection && selection.rangeCount > 0 && selectionInfo.text) {
-      console.log('Using current selection');
-      const range = selection.getRangeAt(0);
-      
-      // Delete the selected content
-      range.deleteContents();
-      
-      // Create a text node with the replacement text
-      const replacementNode = document.createTextNode(translatedText);
-      
-      // Insert the replacement text
-      range.insertNode(replacementNode);
-      
-      // Collapse the selection to after the inserted node
-      selection.collapseToEnd();
-      
-      selectionInfo.success = true;
-    } else {
-      selectionInfo.error = 'No valid text selection found';
-    }
-  } catch (error) {
-    console.error('Error replacing text:', error);
-    selectionInfo.error = error.message;
-  }
-  
-  return selectionInfo;
 }
 
 // Show audio player
