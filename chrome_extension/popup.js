@@ -592,6 +592,16 @@ function getTranslation(text) {
 
 // Show audio player
 function showAudioPlayer(audioUrl, filename) {
+  console.log('Creating audio player for URL:', audioUrl);
+  
+  // Stop any currently playing audio
+  const existingAudio = document.querySelector('audio');
+  if (existingAudio) {
+    console.log('Stopping existing audio playback');
+    existingAudio.pause();
+    existingAudio.currentTime = 0;
+  }
+  
   // Clear previous content
   audioContainer.innerHTML = '';
   
@@ -599,7 +609,7 @@ function showAudioPlayer(audioUrl, filename) {
   const audioHTML = `
     <div class="audio-player">
       <h3>Your Audio:</h3>
-      <audio controls src="${audioUrl}" style="width: 100%; margin: 10px 0;" autoplay></audio>
+      <audio controls src="${audioUrl}" style="width: 100%; margin: 10px 0;" id="audio-element"></audio>
       <a href="${audioUrl}" download="${filename}" class="download-button">Download Audio</a>
     </div>
   `;
@@ -607,6 +617,15 @@ function showAudioPlayer(audioUrl, filename) {
   // Set the HTML
   audioContainer.innerHTML = audioHTML;
   audioContainer.style.display = 'block';
+  
+  // Get the newly created audio element and play it programmatically
+  // instead of using the autoplay attribute
+  const audioElement = document.getElementById('audio-element');
+  if (audioElement) {
+    audioElement.play().catch(e => {
+      console.error('Error playing audio:', e);
+    });
+  }
 }
 
 // Show error message
