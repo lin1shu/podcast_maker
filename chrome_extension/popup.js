@@ -245,6 +245,12 @@ function testServerConnection() {
 function updateWordCount(text) {
   const words = text.trim().split(/\s+/).filter(word => word.length > 0).length;
   wordCountSpan.textContent = words;
+  
+  // Since text area is hidden, also update the button text to show word count
+  if (generateBtn) {
+    generateBtn.textContent = words > 0 ? `Convert to Audio (${words} words)` : 'Convert to Audio';
+  }
+  
   console.log('Word count updated:', words);
 }
 
