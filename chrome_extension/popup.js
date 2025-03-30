@@ -485,7 +485,7 @@ function showAudioPlayer(audioUrl, filename) {
   const audioHTML = `
     <div class="audio-player">
       <h3>Your Audio:</h3>
-      <audio controls src="${audioUrl}" style="width: 100%; margin: 10px 0;"></audio>
+      <audio controls src="${audioUrl}" style="width: 100%; margin: 10px 0;" autoplay></audio>
       <a href="${audioUrl}" download="${filename}" class="download-button">Download Audio</a>
     </div>
   `;
