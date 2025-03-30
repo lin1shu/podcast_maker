@@ -74,6 +74,12 @@ function initializeElements() {
   chineseCheckbox = document.getElementById('chinese');
   console.log('chinese element:', chineseCheckbox);
   
+  // Always set the Chinese checkbox to checked by default
+  if (chineseCheckbox) {
+    chineseCheckbox.checked = true;
+    console.log('Chinese checkbox set to checked by default');
+  }
+  
   settingsToggle = document.getElementById('settings-toggle');
   console.log('settings-toggle element:', settingsToggle);
   
@@ -122,9 +128,9 @@ function loadStoredSettings() {
   chrome.storage.sync.get({
     voice: 'nova', 
     tone: 'friendly', 
-    chinese: false,
+    chinese: true, // Always default to Chinese translation enabled
     showSettings: false // Default to hiding settings
-  }, function(items) {
+  }, function(items) {h
     if (items.voice) {
       voiceSelect.value = items.voice;
       // Update the current voice display
@@ -139,6 +145,9 @@ function loadStoredSettings() {
     
     if (items.chinese !== undefined) {
       chineseCheckbox.checked = items.chinese;
+    } else {
+      // Force checkbox to be checked if not in settings
+      chineseCheckbox.checked = true;
     }
     
     // Apply settings visibility preference
@@ -333,6 +342,31 @@ function checkForTranslation() {
   translationArea.style.display = 'block';
 }
 
+// Handle translate button click
+function handleTranslateClick() {
+  console.log('Translate button clicked - starting translation process');
+  const text = textArea.value.trim();
+  
+  if (!text) {
+    showError('Please enter or select some text first.');
+    return;
+  }
+  
+  // Show processing message
+  statusDiv.textContent = 'Translating...';
+  statusDiv.className = 'status-message';
+  statusDiv.style.display = 'block';
+  
+  // Clear any existing translation
+  translationContainer.innerHTML = '';
+  translationContainer.style.display = 'none';
+  
+  console.log('Processing translation for text:', text.substring(0, 30) + (text.length > 30 ? '...' : ''));
+  
+  // Call the translation function
+  getTranslation(text);
+}
+
 // Handle generate button click
 function handleGenerateClick() {
   console.log('Generate button clicked - VERBOSE DEBUG');
@@ -457,22 +491,45 @@ function handleGenerateClick() {
   }
 }
 
-// Handle translate button click
-function handleTranslateClick() {
-  console.log('Translate button clicked');
-  const text = textArea.value.trim();
+// Show translation in UI
+function showTranslation(original, translated) {
+  console.log('Showing translation:', translated.substring(0, 50) + (translated.length > 50 ? '...' : ''));
   
-  if (!text) {
-    showError('Please enter or select some text first.');
-    return;
-  }
+  // Clear previous content
+  translationContainer.innerHTML = '';
   
-  // Show processing message
-  statusDiv.textContent = 'Translating...';
-  statusDiv.className = 'status-message';
-  statusDiv.style.display = 'block';
+  // Create translated text section
+  const translatedDiv = document.createElement('div');
+  translatedDiv.className = 'text-section translated';
+  translatedDiv.style.padding = '10px';
+  translatedDiv.style.backgroundColor = '#f9f9f9';
+  translatedDiv.style.border = '1px solid #ddd';
+  translatedDiv.style.borderRadius = '5px';
+  translatedDiv.style.marginTop = '15px';
   
-  getTranslation(text);
+  const translatedLabel = document.createElement('div');
+  translatedLabel.className = 'text-label';
+  translatedLabel.textContent = 'Chinese Translation:';
+  translatedLabel.style.fontWeight = 'bold';
+  translatedLabel.style.marginBottom = '5px';
+  
+  const translatedContent = document.createElement('div');
+  translatedContent.className = 'text-content';
+  translatedContent.textContent = translated;
+  translatedContent.style.lineHeight = '1.4';
+  
+  translatedDiv.appendChild(translatedLabel);
+  translatedDiv.appendChild(translatedContent);
+  
+  // Add to container
+  translationContainer.appendChild(translatedDiv);
+  
+  // Make sure the translation container is visible
+  translationContainer.style.display = 'block';
+  
+  // Log visibility for debugging
+  console.log('Translation container display style:', translationContainer.style.display);
+  console.log('Translation content added to DOM');
 }
 
 // Get translation from server
@@ -499,9 +556,16 @@ function getTranslation(text) {
           return;
         }
         
-        showTranslation(text, data.translated_text);
-        // Hide the status message when translation is ready
-        statusDiv.style.display = 'none';
+        if (data.translated_text) {
+          // Display the translation in the UI
+          showTranslation(text, data.translated_text);
+          // Hide the status message when translation is ready
+          statusDiv.style.display = 'none';
+          console.log('Translation displayed successfully');
+        } else {
+          console.error('No translated text in response');
+          showError('Translation error: No translated text received');
+        }
       } catch (parseError) {
         console.error('Error parsing JSON response:', parseError);
         showError('Error parsing translation response');
@@ -524,31 +588,6 @@ function getTranslation(text) {
   
   console.log('Sending translation request...');
   xhr.send(JSON.stringify({ text: text }));
-}
-
-// Show translation in UI
-function showTranslation(original, translated) {
-  // Clear previous content
-  translationContainer.innerHTML = '';
-  
-  // Create translated text section
-  const translatedDiv = document.createElement('div');
-  translatedDiv.className = 'text-section translated';
-  
-  const translatedLabel = document.createElement('div');
-  translatedLabel.className = 'text-label';
-  translatedLabel.textContent = 'Chinese Translation:';
-  
-  const translatedContent = document.createElement('div');
-  translatedContent.className = 'text-content';
-  translatedContent.textContent = translated;
-  
-  translatedDiv.appendChild(translatedLabel);
-  translatedDiv.appendChild(translatedContent);
-  
-  // Add to container
-  translationContainer.appendChild(translatedDiv);
-  translationContainer.style.display = 'block';
 }
 
 // Show audio player

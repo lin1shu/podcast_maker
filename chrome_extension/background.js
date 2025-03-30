@@ -4,9 +4,9 @@ chrome.runtime.onInstalled.addListener(() => {
   chrome.storage.sync.set({
     voice: 'nova',
     tone: 'friendly',
-    chinese: false
+    chinese: true  // Always default to Chinese translation
   }, function() {
-    console.log('Default settings saved');
+    console.log('Default settings saved with Chinese translation enabled by default');
   });
 });
 
