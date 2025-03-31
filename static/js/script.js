@@ -249,23 +249,46 @@ document.addEventListener('DOMContentLoaded', function() {
             'Converting text to speech...';
         showLoading(actionText);
         
-        // Validate input
-        const text = document.getElementById('text').value.trim();
-        if (!text) {
-            showError('Please enter some text to convert.');
+        // Get form values
+        const text = document.getElementById('text').value;
+        const voice = document.getElementById('voice').value;
+        const tone = document.getElementById('tone').value;
+        
+        // Get source URL with extra checks to ensure it's working
+        let sourceUrl = '';
+        const sourceUrlElement = document.getElementById('sourceUrl');
+        if (sourceUrlElement) {
+            sourceUrl = sourceUrlElement.value || '';
+            console.log("Found sourceUrl element with value:", sourceUrl);
+        } else {
+            console.log("sourceUrl element not found");
+        }
+        
+        // Additional debug log
+        console.log("Source URL value being sent:", sourceUrl);
+        
+        if (text.trim() === '') {
+            showError('Please enter some text to convert to speech.');
             return;
         }
         
-        // Prepare request data
+        // Create the request data object
         const requestData = {
-            is_first_chunk: true,
             text: text,
-            voice: document.getElementById('voice').value,
-            tone: document.getElementById('tone').value,
-            is_chinese: isChineseConversion
+            voice: voice,
+            tone: tone,
+            is_chinese: isChineseConversion,
+            is_first_chunk: true
         };
         
-        // Send request to process the first chunk
+        // Add source_url only if it has a value
+        if (sourceUrl) {
+            requestData.source_url = sourceUrl;
+        }
+        
+        console.log("Final request data:", requestData);
+        
+        // Process the entire text
         fetch('/process_chunk', {
             method: 'POST',
             headers: {
@@ -449,5 +472,46 @@ document.addEventListener('DOMContentLoaded', function() {
         currentChunkIndex = 0;
         totalChunks = 0;
         processedChunks = [];
+    }
+    
+    // Function to translate text via API
+    function translateText(text) {
+        if (!text) return;
+        
+        const sourceUrl = document.getElementById('sourceUrl').value;
+        
+        showLoading('Translating text to Chinese...');
+        
+        fetch('/translate_text', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                text: text,
+                source_url: sourceUrl
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            hideLoading();
+            
+            if (data.error) {
+                showError(data.error);
+                return;
+            }
+            
+            const translationDiv = document.getElementById('translationResult');
+            if (translationDiv) {
+                translationDiv.textContent = data.translated_text;
+                translationDiv.style.display = 'block';
+            }
+            
+            resultCard.style.display = 'block';
+        })
+        .catch(error => {
+            hideLoading();
+            showError('Error translating text: ' + error.message);
+        });
     }
 }); 

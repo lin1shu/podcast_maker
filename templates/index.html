@@ -12,6 +12,20 @@
         <h1 class="text-center mb-4">Text to Speech Converter</h1>
         <p class="text-center mb-5">Convert your text to speech using OpenAI's TTS API</p>
 
+        <div class="row justify-content-center mb-3">
+            <div class="col-lg-9 text-center">
+                <a href="/podcast_list" class="btn btn-outline-primary">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-database me-1" viewBox="0 0 16 16">
+                        <path d="M4.318 2.687C5.234 2.271 6.536 2 8 2s2.766.27 3.682.687C12.644 3.125 13 3.627 13 4c0 .374-.356.875-1.318 1.313C10.766 5.729 9.464 6 8 6s-2.766-.27-3.682-.687C3.356 4.875 3 4.373 3 4c0-.374.356-.875 1.318-1.313z"/>
+                        <path d="M13 5.698V7c0 .374-.356.875-1.318 1.313C10.766 8.729 9.464 9 8 9s-2.766-.27-3.682-.687C3.356 7.875 3 7.373 3 7V5.698c.271.202.58.378.904.525C4.978 6.711 6.427 7 8 7s3.022-.289 4.096-.777A4.92 4.92 0 0 0 13 5.698z"/>
+                        <path d="M13 8.698V10c0 .374-.356.875-1.318 1.313C10.766 11.729 9.464 12 8 12s-2.766-.27-3.682-.687C3.356 10.875 3 10.373 3 10V8.698c.271.202.58.378.904.525C4.978 9.711 6.427 10 8 10s3.022-.289 4.096-.777A4.92 4.92 0 0 0 13 8.698z"/>
+                        <path d="M13 11.698V13c0 .374-.356.875-1.318 1.313C10.766 14.729 9.464 15 8 15s-2.766-.27-3.682-.687C3.356 13.875 3 13.373 3 13v-1.302c.271.202.58.378.904.525C4.978 12.711 6.427 13 8 13s3.022-.289 4.096-.777c.324-.147.633-.323.904-.525z"/>
+                    </svg>
+                    View Podcast Database
+                </a>
+            </div>
+        </div>
+
         <div class="row justify-content-center">
             <div class="col-lg-9">
                 <div class="card shadow-sm">
@@ -23,6 +37,12 @@
                             <div class="mb-3">
                                 <label for="text" class="form-label">Text</label>
                                 <textarea class="form-control" id="text" name="text" rows="6" required></textarea>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="sourceUrl" class="form-label">Source URL (optional)</label>
+                                <input type="url" class="form-control" id="sourceUrl" name="sourceUrl" placeholder="https://...">
+                                <small class="form-text text-muted">Enter the URL where this text was found</small>
                             </div>
                             
                             <div class="row mb-3">

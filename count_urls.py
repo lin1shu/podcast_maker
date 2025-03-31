@@ -1,0 +1,1 @@
+from pymongo import MongoClient; client = MongoClient("mongodb://admin:password@localhost:27017/"); db = client["podcast_maker_db"]; count = db["podcasts"].count_documents({"source_url": {"$ne": ""}}); print(f"Found {count} documents with non-empty source_url")

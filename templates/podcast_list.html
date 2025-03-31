@@ -36,6 +36,17 @@
             overflow: visible;
             background-color: #f8f9fa;
         }
+        .url-cell {
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .url-cell:hover {
+            white-space: normal;
+            overflow: visible;
+            background-color: #f8f9fa;
+        }
         .audio-player {
             max-width: 250px;
         }
@@ -70,6 +81,7 @@
                         <th>Original Text (English)</th>
                         <th>Translated Text (Chinese)</th>
                         <th>Audio</th>
+                        <th>Source URL</th>
                         <th>Created</th>
                     </tr>
                 </thead>
@@ -87,6 +99,13 @@
                             </audio>
                             {% elif record.translation_id %}
                             <span class="badge bg-secondary">Text Only</span>
+                            {% endif %}
+                        </td>
+                        <td class="url-cell">
+                            {% if record.source_url %}
+                            <a href="{{ record.source_url }}" target="_blank">{{ record.source_url }}</a>
+                            {% else %}
+                            <span class="badge bg-secondary">None</span>
                             {% endif %}
                         </td>
                         <td class="timestamp">{{ record.created_at }}</td>

@@ -1,121 +1,112 @@
 # Podcast Maker
 
-A Python 3.12 web application that converts text to speech using OpenAI's gpt-4o-mini-tts API.
+A web application that converts text to speech with optional Chinese translation using OpenAI's TTS API. Data is stored in MongoDB.
 
 ## Features
 
-- Convert text to speech using OpenAI's latest gpt-4o-mini-tts model
-- Choose from multiple voice options provided by OpenAI
-- Customize the speaking tone (warm, professional, enthusiastic, etc.)
-- Play audio directly in the browser
-- Download the generated MP3 file
+- Convert text to speech with multiple voice options
+- Translate text to Chinese
+- Store text and audio in MongoDB for easy retrieval
+- View all podcast entries in a database browser
 
 ## Setup
 
-1. Ensure Python 3.12 is installed:
-   ```
-   python --version
-   ```
+### Prerequisites
 
-2. Set up a virtual environment:
-   ```
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
+- Python 3.8+
+- Docker (for MongoDB)
+- OpenAI API key
 
-3. Install dependencies:
+### Installation
+
+1. Clone the repository
+2. Install Python dependencies:
    ```
    pip install -r requirements.txt
    ```
-
-4. Configure your OpenAI API key:
-   
-   **Option 1 - Using the setup script (Recommended):**
-   Run the provided setup script which will guide you through the process:
-   ```bash
-   ./setup_config.py
+3. Set up MongoDB using Docker:
    ```
-   This script will securely store your API key in your home directory and set appropriate file permissions.
-   
-   **Option 2 - Manual setup in home directory:**
-   Create a config file in your home directory:
-   ```bash
-   echo '{"api_key": "your-openai-api-key-here"}' > ~/.podcast_maker_config.json
-   chmod 600 ~/.podcast_maker_config.json  # Restrict permissions (Unix/Mac only)
+   docker run -d --name mongodb -p 27017:27017 -e MONGO_INITDB_ROOT_USERNAME=admin -e MONGO_INITDB_ROOT_PASSWORD=password mongo:latest
    ```
+4. Set up your OpenAI API key:
+   - Create a `config.json` file in the project root with the following content:
+     ```json
+     {
+       "api_key": "your_openai_api_key_here"
+     }
+     ```
 
-   **Option 3 - Application directory:**
-   Edit the `config.json` file in the application directory:
-   ```json
-   {
-       "api_key": "your-openai-api-key-here"
-   }
-   ```
+### Running the application
 
-   The application will first look for the config file in your home directory, and if not found, it will check the local directory.
-
-5. Run the web application using the launch script (recommended):
-   ```
-   ./launch.sh
-   ```
-   
-   This script will automatically kill any process using port 9090 and start the application.
-
-   Alternatively, you can run the app directly:
+1. Start the Flask application:
    ```
    python app.py
    ```
+2. Access the web interface at `http://localhost:9092`
 
-6. Open your browser and go to:
+## MongoDB Integration
+
+The application uses MongoDB to store:
+- Original text (English)
+- Translated text (Chinese, when applicable)
+- Audio files (as binary data)
+- Metadata (creation timestamps, voice settings, etc.)
+
+### Importing existing data
+
+To import all audio files from the `audio` directory into MongoDB:
+
+```
+python import_audio_to_mongodb.py
+```
+
+### Managing duplicates
+
+The application includes tools to prevent and clean up duplicate entries:
+
+1. **Automatic duplicate prevention** - The application checks for existing content before processing new requests.
+
+2. **Cleanup utility** - Use the cleanup script to find and remove duplicates:
    ```
-   http://127.0.0.1:9090
+   # Show what would be removed without making changes
+   python cleanup_duplicates.py --dry-run
+   
+   # Actually remove duplicates
+   python cleanup_duplicates.py
+   
+   # Just analyze the database without changes
+   python cleanup_duplicates.py --analyze
    ```
+
+### Viewing the database
+
+Access the podcast database viewer at `http://localhost:9092/podcast_list` to see all entries with playable audio.
+
+### MongoDB Connection Details
+
+- Server: localhost:27017
+- Database: podcast_maker_db
+- Collection: podcasts
+- Username: admin
+- Password: password
 
 ## Usage
 
-1. Enter the text you want to convert to speech in the text area
-2. Select a voice from the dropdown menu
-3. Choose a tone for the speech (neutral, warm, professional, etc.)
-4. Click "Convert to Speech"
-5. Wait for the conversion to complete
-6. The audio will play automatically
-7. You can download the MP3 file using the "Download MP3" button
+1. Enter text in the main page text area
+2. Select a voice and tone
+3. Click "Convert to Speech" or "Convert to Chinese Speech"
+4. The audio will be generated and stored in MongoDB
+5. View all your stored podcasts in the database viewer
 
-## API Key Configuration
+## API Endpoints
 
-Your OpenAI API key can be stored in one of two locations:
+- `/`: Main page
+- `/podcast_list`: Database viewer for all podcast entries
+- `/get_podcast_history`: JSON API to get all podcast records
+- `/get_podcast_audio/<chunk_id>`: Get audio file for a specific entry
+- `/translate_text`: Translate text to Chinese
+- `/process_chunk`: Process text to speech
 
-1. **Home directory (recommended)**: `~/.podcast_maker_config.json`
-   - This keeps your API key outside of the application directory
-   - Reduces the risk of accidentally committing your API key to version control
-   - Can be secured with file permissions (chmod 600)
-   - Use the `setup_config.py` script for easy setup
+## License
 
-2. **Application directory**: `config.json` in the root of the application
-
-The application will first check your home directory for the config file. If not found, it will look in the application directory.
-
-## Voice Options
-
-The application supports all standard voices available in OpenAI's TTS API:
-
-- Alloy: Versatile, neutral voice
-- Echo: High-clarity, crisp voice
-- Fable: Expressive, narrative voice 
-- Onyx: Deep, authoritative voice
-- Nova: Warm, natural voice
-- Shimmer: Clear, optimistic voice
-
-## Tone Options
-
-With the new gpt-4o-mini-tts model, you can customize how the voice speaks with different tones:
-
-- Neutral: Standard, balanced tone
-- Warm: Friendly, approachable tone
-- Professional: Formal, business-like tone
-- Enthusiastic: Excited, energetic tone
-- Calm: Soothing, relaxed tone
-- Formal: Structured, official tone
-- Informal: Casual, conversational tone
-- Serious: Grave, important tone
-- Friendly: Kind, welcoming tone 
+MIT 

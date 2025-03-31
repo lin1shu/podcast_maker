@@ -1,0 +1,1 @@
+curl -X POST http://localhost:9092/process_chunk -H "Content-Type: application/json" -d "{\"is_first_chunk\": true, \"text\": \"Test with source URL\", \"voice\": \"nova\", \"tone\": \"friendly\", \"is_chinese\": false, \"source_url\": \"https://example.com/test-article\"}"
