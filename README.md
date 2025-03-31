@@ -1,13 +1,34 @@
 # Podcast Maker
 
-A web application that converts text to speech with optional Chinese translation using OpenAI's TTS API. Data is stored in MongoDB.
+A web application that converts text to speech with optional Chinese translation using OpenAI's TTS API. Features a modular Flask architecture and MongoDB for data storage.
 
 ## Features
 
 - Convert text to speech with multiple voice options
-- Translate text to Chinese
+- Translate text to Chinese with proper formatting
 - Store text and audio in MongoDB for easy retrieval
-- View all podcast entries in a database browser
+- View all podcast entries in a responsive database browser
+- Chrome extension for easy text selection and processing
+- Source URL tracking for audio content
+
+## Project Structure
+
+```
+podcast_maker/
+├── app/                    # Main application package
+│   ├── config/            # Configuration management
+│   ├── models/            # Data models
+│   ├── routes/            # Route handlers
+│   ├── services/          # Business logic and services
+│   ├── static/            # Static files
+│   ├── templates/         # HTML templates
+│   └── utils/             # Utility functions
+├── chrome_extension/      # Chrome extension files
+├── audio/                 # Audio file storage
+├── requirements.txt       # Python dependencies
+├── run.py                # Application entry point
+└── restart_server.sh     # Server management script
+```
 
 ## Setup
 
@@ -16,6 +37,7 @@ A web application that converts text to speech with optional Chinese translation
 - Python 3.8+
 - Docker (for MongoDB)
 - OpenAI API key
+- Chrome browser (for extension)
 
 ### Installation
 
@@ -28,84 +50,104 @@ A web application that converts text to speech with optional Chinese translation
    ```
    docker run -d --name mongodb -p 27017:27017 -e MONGO_INITDB_ROOT_USERNAME=admin -e MONGO_INITDB_ROOT_PASSWORD=password mongo:latest
    ```
-4. Set up your OpenAI API key:
-   - Create a `config.json` file in the project root with the following content:
-     ```json
-     {
-       "api_key": "your_openai_api_key_here"
-     }
+4. Configure your environment:
+   - Copy `.env.example` to `.env`
+   - Update `.env` with your settings:
+     ```
+     FLASK_ENV=development
+     PORT=9090
+     SECRET_KEY=your_secret_key_here
+     MONGODB_HOST=localhost
+     MONGODB_PORT=27017
+     MONGODB_USER=admin
+     MONGODB_PASSWORD=password
+     MONGODB_DB=podcast_maker_db
+     OPENAI_API_KEY=your_openai_api_key_here
      ```
 
 ### Running the application
 
 1. Start the Flask application:
    ```
-   python app.py
+   ./restart_server.sh
    ```
-2. Access the web interface at `http://localhost:9092`
+2. Access the web interface at `http://localhost:9090`
+3. Check `app_output.log` for server logs
 
 ## MongoDB Integration
 
 The application uses MongoDB to store:
 - Original text (English)
-- Translated text (Chinese, when applicable)
+- Translated text (Chinese, with proper formatting)
 - Audio files (as binary data)
-- Metadata (creation timestamps, voice settings, etc.)
+- Metadata (creation timestamps, voice settings, source URLs)
 
-### Importing existing data
+### Database Management Tools
 
-To import all audio files from the `audio` directory into MongoDB:
-
-```
-python import_audio_to_mongodb.py
-```
-
-### Managing duplicates
-
-The application includes tools to prevent and clean up duplicate entries:
-
-1. **Automatic duplicate prevention** - The application checks for existing content before processing new requests.
-
-2. **Cleanup utility** - Use the cleanup script to find and remove duplicates:
+1. **Connection Check**:
    ```
-   # Show what would be removed without making changes
+   python check_mongodb.py
+   ```
+
+2. **Import Existing Data**:
+   ```
+   python import_audio_to_mongodb.py
+   ```
+
+3. **Cleanup Utility**:
+   ```
+   # Show what would be removed (dry run)
    python cleanup_duplicates.py --dry-run
    
-   # Actually remove duplicates
+   # Remove duplicates
    python cleanup_duplicates.py
    
-   # Just analyze the database without changes
+   # Analyze the database
    python cleanup_duplicates.py --analyze
    ```
 
-### Viewing the database
+### Database Viewer
 
-Access the podcast database viewer at `http://localhost:9092/podcast_list` to see all entries with playable audio.
-
-### MongoDB Connection Details
-
-- Server: localhost:27017
-- Database: podcast_maker_db
-- Collection: podcasts
-- Username: admin
-- Password: password
-
-## Usage
-
-1. Enter text in the main page text area
-2. Select a voice and tone
-3. Click "Convert to Speech" or "Convert to Chinese Speech"
-4. The audio will be generated and stored in MongoDB
-5. View all your stored podcasts in the database viewer
+Access the podcast database viewer at `http://localhost:9090/podcast/list` to:
+- View all entries with playable audio
+- See original and translated text
+- Track source URLs
+- View creation timestamps
 
 ## API Endpoints
 
 - `/`: Main page
-- `/podcast_list`: Database viewer for all podcast entries
-- `/get_podcast_history`: JSON API to get all podcast records
-- `/get_podcast_audio/<chunk_id>`: Get audio file for a specific entry
-- `/translate_text`: Translate text to Chinese
-- `/process_chunk`: Process text to speech
+- `/podcast/list`: Database viewer
+- `/api/podcast/history`: Get all podcast records (JSON)
+- `/audio/get_podcast_audio/<chunk_id>`: Get audio file
+- `/api/translate`: Translate text to Chinese
+- `/api/process`: Process text to speech
+
+## Chrome Extension
+
+The Chrome extension allows you to:
+1. Select text on any webpage
+2. Convert it to speech directly
+3. Automatically capture the source URL
+4. Access the audio in the database viewer
+
+### Installing the Extension
+
+1. Open Chrome and go to `chrome://extensions/`
+2. Enable "Developer mode"
+3. Click "Load unpacked" and select the `chrome_extension` directory
+
+## Configuration
+
+The application supports multiple environments:
+- Development (default)
+- Testing
+- Production
+
+Configuration is managed through:
+1. Environment variables
+2. `.env` file
+3. Config classes in `app/config/config.py`
 
 ## License
 
