@@ -27,6 +27,10 @@ logging.basicConfig(level=logging.DEBUG,
                    ])
 logger = logging.getLogger(__name__)
 
+# Set pymongo logger to INFO level to filter out heartbeat messages
+logging.getLogger("pymongo").setLevel(logging.INFO)
+logging.getLogger("pymongo.monitoring").setLevel(logging.INFO)
+
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 # Use a fixed secret key for session management
@@ -235,6 +239,7 @@ def process_chunk():
         if request.is_json:
             request_data = request.get_json()
             logger.info(f"JSON request data: {json.dumps(request_data, indent=2)}")
+            logger.info(f"Type of source_url: {type(request_data.get('source_url', '')).__name__}, Value: '{request_data.get('source_url', '')}'")
         else:
             logger.info(f"Form data: {request.form}")
             logger.info(f"Args: {request.args}")
@@ -251,8 +256,19 @@ def process_chunk():
             voice = request_data.get('voice', 'nova')
             tone = request_data.get('tone', 'friendly')
             is_chinese = request_data.get('is_chinese', False)
+            source_url = request_data.get('source_url', '')
             
-            logger.info(f"Processing first chunk with voice={voice}, tone={tone}, chinese={is_chinese}")
+            # Enhanced source URL validation and logging
+            if source_url:
+                logger.info(f"✅ SOURCE URL RECEIVED: '{source_url}'")
+            else:
+                logger.warning("⚠️ NO SOURCE URL PROVIDED IN REQUEST")
+                
+            # Additional validation for source URL format
+            if source_url and not source_url.startswith(('http://', 'https://')):
+                logger.warning(f"⚠️ INVALID SOURCE URL FORMAT: '{source_url}' - should start with http:// or https://")
+            
+            logger.info(f"Processing first chunk with voice={voice}, tone={tone}, chinese={is_chinese}, source_url={source_url}")
             logger.debug(f"Text length: {len(text)} characters")
             
             # Chunk the text
@@ -268,13 +284,15 @@ def process_chunk():
             session['session_id'] = session_id
             session['is_chinese'] = is_chinese
             session['processed_chunks'] = []
+            session['source_url'] = source_url
             
             logger.info(f"Created new session: {session_id} with {len(text_chunks)} chunks")
             
             # If there's only one chunk, process it immediately
             if len(text_chunks) == 1:
                 logger.info("Processing single chunk immediately")
-                chunk_info = process_single_chunk(text_chunks[0], voice, tone, is_chinese)
+                logger.info(f"Source URL being passed to processor: '{source_url}'")
+                chunk_info = process_single_chunk(text_chunks[0], voice, tone, is_chinese, source_url)
                 return jsonify({
                     'is_chunked': False,
                     'total_chunks': 1,
@@ -302,9 +320,11 @@ def process_chunk():
             total_chunks = session.get('total_chunks', 0)
             is_chinese = session.get('is_chinese', False)
             processed_chunks = session.get('processed_chunks', [])
+            source_url = session.get('source_url', '')
             
             # Debug logging
             logger.info(f"Processing chunk {current_chunk_index+1}/{total_chunks}")
+            logger.info(f"Source URL from session: '{source_url}'")
             logger.debug(f"Session data: voice={voice}, tone={tone}, is_chinese={is_chinese}")
             
             # Check if session data exists
@@ -316,7 +336,7 @@ def process_chunk():
             chunk = chunks[current_chunk_index]
             
             # Process the chunk
-            chunk_info = process_single_chunk(chunk, voice, tone, is_chinese)
+            chunk_info = process_single_chunk(chunk, voice, tone, is_chinese, source_url)
             
             # Add to processed chunks
             processed_chunks.append(chunk_info)
@@ -340,12 +360,18 @@ def process_chunk():
         logger.error(traceback.format_exc())
         return jsonify({'error': f"Error: {str(e)}"})
 
-def process_single_chunk(text, voice, tone, is_chinese):
+def process_single_chunk(text, voice, tone, is_chinese, source_url=""):
     """Process a single chunk of text - translating if needed and converting to speech"""
     # Default values
     original_text = text
     translated_text = None
     existing_record_id = None
+    
+    # Source URL validation and logging
+    if source_url:
+        logger.info(f"💾 STORING SOURCE URL: '{source_url}'")
+    else:
+        logger.warning("⚠️ No source URL provided to process_single_chunk")
     
     logger.info(f"Processing single chunk: voice={voice}, tone={tone}, is_chinese={is_chinese}")
     logger.debug(f"Text length: {len(text)} characters")
@@ -370,6 +396,14 @@ def process_single_chunk(text, voice, tone, is_chinese):
                 translated_text = existing_translation_with_audio.get('translated_text')
                 file_uuid = existing_translation_with_audio.get('chunk_id')
                 
+                # Update source_url if it's provided and not already set
+                if source_url and not existing_translation_with_audio.get('source_url'):
+                    podcast_collection.update_one(
+                        {'_id': existing_translation_with_audio.get('_id')},
+                        {'$set': {'source_url': source_url}}
+                    )
+                    logger.info(f"📝 Updated existing record with source URL: '{source_url}'")
+                
                 # Create local files for compatibility
                 filename = f"chunk_{file_uuid}.mp3"
                 filepath = os.path.join('audio', filename)
@@ -386,7 +420,8 @@ def process_single_chunk(text, voice, tone, is_chinese):
                     with open(json_filepath, 'w', encoding='utf-8') as f:
                         json.dump({
                             'original_text': original_text,
-                            'translated_text': translated_text
+                            'translated_text': translated_text,
+                            'source_url': existing_translation_with_audio.get('source_url', source_url)
                         }, f, ensure_ascii=False, indent=2)
                 
                 # Return the existing info
@@ -396,7 +431,8 @@ def process_single_chunk(text, voice, tone, is_chinese):
                     'audio_url': f'/audio/{filename}',
                     'filename': filename,
                     'json_filename': json_filename,
-                    'reused': True
+                    'reused': True,
+                    'source_url': existing_translation_with_audio.get('source_url', source_url)
                 }
                 
             # If no complete record found, check if we have just the translation
@@ -451,6 +487,17 @@ def process_single_chunk(text, voice, tone, is_chinese):
             if existing_record_with_audio and 'audio_data' in existing_record_with_audio:
                 logger.info("Found existing audio in database with matching parameters, reusing it")
                 file_uuid = existing_record_with_audio.get('chunk_id')
+                
+                # Update source_url if it's provided and not already set
+                if source_url and not existing_record_with_audio.get('source_url'):
+                    podcast_collection.update_one(
+                        {'_id': existing_record_with_audio.get('_id')},
+                        {'$set': {'source_url': source_url}}
+                    )
+                    logger.info(f"📝 Updated existing record with source URL: '{source_url}'")
+                elif source_url:
+                    logger.info(f"ℹ️ Record already has source URL: '{existing_record_with_audio.get('source_url')}'")
+                
                 # Create local files for compatibility
                 filename = f"chunk_{file_uuid}.mp3"
                 filepath = os.path.join('audio', filename)
@@ -467,7 +514,8 @@ def process_single_chunk(text, voice, tone, is_chinese):
                     with open(json_filepath, 'w', encoding='utf-8') as f:
                         json.dump({
                             'original_text': original_text,
-                            'translated_text': None
+                            'translated_text': None,
+                            'source_url': existing_record_with_audio.get('source_url', source_url)
                         }, f, ensure_ascii=False, indent=2)
                 
                 # Return the existing info
@@ -477,7 +525,8 @@ def process_single_chunk(text, voice, tone, is_chinese):
                     'audio_url': f'/audio/{filename}',
                     'filename': filename,
                     'json_filename': json_filename,
-                    'reused': True
+                    'reused': True,
+                    'source_url': existing_record_with_audio.get('source_url', source_url)
                 }
             
             # Check if we have a record without audio that we can update
@@ -517,7 +566,8 @@ def process_single_chunk(text, voice, tone, is_chinese):
     # Save both English and Chinese text to JSON file with the same UUID
     json_data = {
         'original_text': original_text,
-        'translated_text': translated_text
+        'translated_text': translated_text,
+        'source_url': source_url
     }
     
     json_filename = f"chunk_{file_uuid}.json"
@@ -545,8 +595,13 @@ def process_single_chunk(text, voice, tone, is_chinese):
                 'is_chinese': is_chinese,
                 'audio_data': audio_binary,
                 'created_at': datetime.now(),
-                'content_hash': content_hash
+                'content_hash': content_hash,
+                'source_url': source_url
             }
+            
+            # Log the source URL being saved to MongoDB
+            if source_url:
+                logger.info(f"💾 SAVING SOURCE URL TO MONGODB: '{source_url}'")
             
             # If we found an existing record (just translation), update it instead of inserting
             if existing_record_id:
@@ -559,7 +614,8 @@ def process_single_chunk(text, voice, tone, is_chinese):
                         'tone': tone,
                         'audio_data': audio_binary,
                         'updated_at': datetime.now(),
-                        'content_hash': content_hash
+                        'content_hash': content_hash,
+                        'source_url': source_url
                     }}
                 )
             else:
@@ -575,7 +631,8 @@ def process_single_chunk(text, voice, tone, is_chinese):
         'translated_text': translated_text,
         'audio_url': f'/audio/{filename}',
         'filename': filename,
-        'json_filename': json_filename
+        'json_filename': json_filename,
+        'source_url': source_url
     }
 
 @app.route('/get_all_processed_chunks', methods=['GET'])
@@ -785,12 +842,24 @@ def translate_text():
         # Get the text to translate
         request_data = request.get_json() if request.is_json else {}
         text = request_data.get('text', '')
+        source_url = request_data.get('source_url', '')
+        
+        # Enhanced logging for source_url
+        if source_url:
+            logger.info(f"✅ SOURCE URL RECEIVED IN TRANSLATION REQUEST: '{source_url}'")
+        else:
+            logger.warning(f"⚠️ NO SOURCE URL PROVIDED IN TRANSLATION REQUEST")
+            
+        # Additional validation for source URL format
+        if source_url and not source_url.startswith(('http://', 'https://')):
+            logger.warning(f"⚠️ INVALID SOURCE URL FORMAT: '{source_url}' - should start with http:// or https://")
         
         if not text:
             logger.error("No text provided for translation")
             return jsonify({'error': 'No text provided for translation'})
         
         logger.info(f"Translating text to Chinese: {text[:100]}...")
+        logger.debug(f"Source URL: {source_url}")
         
         # Translate the text
         translation_response = client.chat.completions.create(
@@ -809,7 +878,8 @@ def translate_text():
         # The translation will only be stored when audio is also generated
         
         return jsonify({
-            'translated_text': translated_text
+            'translated_text': translated_text,
+            'source_url': source_url
         })
     except Exception as e:
         print(f"Error in translate_text: {str(e)}")
@@ -943,6 +1013,16 @@ def test_connection():
         'message': 'Connection to VoiceText Pro server established successfully!',
         'timestamp': datetime.now().isoformat()
     })
+
+@app.route('/test_source_url')
+def test_source_url():
+    """Serve a test page for testing source URL functionality"""
+    return send_from_directory('.', 'test_source_url.html')
+
+@app.route('/test_extension')
+def test_extension():
+    """Serve a test page for testing the Chrome extension"""
+    return send_from_directory('.', 'test_extension.html')
 
 def _build_cors_preflight_response():
     response = jsonify({})

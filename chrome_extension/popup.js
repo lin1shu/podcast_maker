@@ -4,6 +4,8 @@ let translationArea, translateBtn, voiceSelect, toneSelect, chineseCheckbox;
 let audioContainer, translationContainer;
 let settingsToggle, settingsPanel, currentSettings, currentVoice, currentTone;
 let lastTranslation = null; // Store the last translation result
+// Store the source URL
+let currentSourceUrl = '';
 
 // Global variable to track audio processing state
 let isProcessingAudio = false;
@@ -18,6 +20,9 @@ document.addEventListener('DOMContentLoaded', function() {
   
   // Test server connection
   testServerConnection();
+  
+  // Get current tab URL
+  getCurrentTabUrl();
   
   // First, check for text from the simplified context menu selection
   chrome.storage.local.get('contextMenuSelection', function(data) {
@@ -719,14 +724,20 @@ function handleGenerateClick() {
       is_first_chunk: true
     };
     
+    // Add source URL if available
+    if (currentSourceUrl) {
+      requestData.source_url = currentSourceUrl;
+      console.log('Adding source URL to request:', currentSourceUrl);
+    }
+    
     console.log('Sending request with settings:', {
       voice: requestData.voice,
       tone: requestData.tone,
       is_chinese: requestData.is_chinese,
       textLength: text.length,
-      isAfterTranslation: isAfterTranslation
+      isAfterTranslation: isAfterTranslation,
+      source_url: requestData.source_url || 'not set'
     });
-    
     console.log('Full request data:', JSON.stringify(requestData).substring(0, 500));
     console.log('About to send to http://192.168.4.106:9092/process_chunk');
     
@@ -923,8 +934,15 @@ function getTranslation(text) {
     showError('Translation error: Network error');
   };
   
+  // Include source URL in translation request as well
+  const requestData = { text: text };
+  if (currentSourceUrl) {
+    requestData.source_url = currentSourceUrl;
+    console.log('Adding source URL to translation request:', currentSourceUrl);
+  }
+  
   console.log('Sending translation request...');
-  xhr.send(JSON.stringify({ text: text }));
+  xhr.send(JSON.stringify(requestData));
 }
 
 // Function to replace text on the page
@@ -1142,4 +1160,16 @@ function showSuccess(message) {
   statusDiv.textContent = message;
   statusDiv.className = 'status-message success';
   statusDiv.style.display = 'block';
+}
+
+// Get current tab URL
+function getCurrentTabUrl() {
+  chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+    if (tabs && tabs.length > 0) {
+      currentSourceUrl = tabs[0].url;
+      console.log('Current tab URL captured as source URL:', currentSourceUrl);
+    } else {
+      console.warn('Could not get current tab URL');
+    }
+  });
 }
