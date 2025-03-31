@@ -1,1 +1,0 @@
-from pymongo import MongoClient; client = MongoClient("mongodb://admin:password@localhost:27017/"); db = client["podcast_maker_db"]; doc = db["podcasts"].find_one({"source_url": "https://example.com/test_update"}); print(f"Found document: {doc.get(\"_id\")}, Source URL: {doc.get(\"source_url\")}")
