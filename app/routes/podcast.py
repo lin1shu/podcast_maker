@@ -77,7 +77,8 @@ def podcast_list():
             
             # Format datetime objects
             if 'created_at' in podcast and isinstance(podcast['created_at'], datetime):
-                podcast['created_at'] = podcast['created_at'].isoformat()
+                # Format to YYYY-MM-DD HH:MM:SS
+                podcast['created_at'] = podcast['created_at'].strftime('%Y-%m-%d %H:%M:%S')
             
             # Initialize variables for record data
             chunk_id = None
@@ -164,7 +165,8 @@ def get_podcast_history():
         # Convert datetime objects to strings for JSON serialization
         for podcast in podcasts:
             if 'created_at' in podcast and isinstance(podcast['created_at'], datetime):
-                podcast['created_at'] = podcast['created_at'].isoformat()
+                # Format to YYYY-MM-DD HH:MM:SS
+                podcast['created_at'] = podcast['created_at'].strftime('%Y-%m-%d %H:%M:%S')
             
             # Convert MongoDB ObjectId to string
             if '_id' in podcast:
